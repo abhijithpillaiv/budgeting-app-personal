@@ -205,9 +205,8 @@
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec";
-const API_TOKEN = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
-
-const RECENT_N = 20;
+const API_TOKEN  = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
+const RECENT_N   = 20;
 
 const FALLBACK_LISTS = {
   people: ["abhi","athira","Shared"],
@@ -215,54 +214,25 @@ const FALLBACK_LISTS = {
   paymentMethods: ["Cash","Card","UPI","Bank Transfer","Wallet"],
   categories: [
     { label: "--- Income ---", disabled: true },
-    "Salary (Me)",
-    "Salary (Spouse)",
-    "Bonus",
-    "Side Income",
-    "Interest/Dividends",
-    "Refunds/Other",
+    "Salary (Me)","Salary (Spouse)","Bonus","Side Income","Interest/Dividends","Refunds/Other",
     { label: "--- Expenses ---", disabled: true },
-    "Rent / Housing",
-    "Grocery",
-    "Food (Dining)",
-    "Food (Delivery)",
-    "Petrol / Fuel",
-    "Transport (Cab/Bus/Train)",
-    "Bills (Electricity/Water/Gas/Internet/Phone)",
-    "Hospital / Medical",
-    "Insurance",
-    "EMI / Loans",
-    "Entertainment",
-    "Shopping",
-    "Subscriptions",
-    "Cigarettes / Drinks",
-    "Personal Care",
-    "Gifts/Donations",
-    "Travel",
-    "Education",
-    "Kids/Family",
-    "Savings/Investments",
+    "Rent / Housing","Grocery","Food (Dining)","Food (Delivery)","Petrol / Fuel",
+    "Transport (Cab/Bus/Train)","Bills (Electricity/Water/Gas/Internet/Phone)","Hospital / Medical",
+    "Insurance","EMI / Loans","Entertainment","Shopping","Subscriptions","Cigarettes / Drinks",
+    "Personal Care","Gifts/Donations","Travel","Education","Kids/Family","Savings/Investments",
     "Miscellaneous / Buffer"
   ],
-  subcategories: ["—"],
   accounts: ["—"]
 };
 
 const $ = (id) => document.getElementById(id);
-
-function setPill(text, ok=false){
-  const el = $("statusPill");
-  el.textContent = text;
-  el.style.borderColor = ok ? "rgba(45,212,191,.55)" : "var(--line)";
-  el.style.color = ok ? "rgba(45,212,191,.95)" : "var(--muted)";
-}
 
 function toast(msg, kind=""){
   const el = $("toast");
   el.className = "toast show" + (kind ? " " + kind : "");
   el.textContent = msg;
   clearTimeout(toast._t);
-  toast._t = setTimeout(()=>{ el.className = "toast"; }, 6000);
+  toast._t = setTimeout(()=>{ el.className = "toast"; }, 6500);
 }
 
 function todayISO(){
@@ -271,10 +241,6 @@ function todayISO(){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
-/** Supports:
- *  - string values
- *  - {label:"--- Income ---", disabled:true} separator
- */
 function fillSelect(selectEl, values){
   selectEl.innerHTML = "";
   for (const v of values){
@@ -291,44 +257,12 @@ function fillSelect(selectEl, values){
   }
 }
 
-function applyLists(lists){
-  fillSelect($("person"), (lists.people?.length ? lists.people : FALLBACK_LISTS.people));
-  fillSelect($("type"), (lists.types?.length ? lists.types : FALLBACK_LISTS.types));
-  fillSelect($("payment"), (lists.paymentMethods?.length ? lists.paymentMethods : FALLBACK_LISTS.paymentMethods));
-
-  // categories: allow separators
-  const cats = (lists.categories?.length ? lists.categories : FALLBACK_LISTS.categories);
-  fillSelect($("category"), cats);
-
-  fillSelect($("subcategory"), (lists.subcategories?.length ? lists.subcategories : FALLBACK_LISTS.subcategories));
-  fillSelect($("account"), (lists.accounts?.length ? lists.accounts : FALLBACK_LISTS.accounts));
-}
-
-async function fetchJsonOrThrow(url, options){
-  const res = await fetch(url, options);
-  // If Apps Script returns HTML (login page / error), this will fail JSON parsing
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`Non-JSON response (${res.status}). Probably auth/redirect/CORS. Response starts with: ${text.slice(0, 80)}...`);
-  }
-}
-
-async function loadLists(){
-  // No fallback-switch logic anymore; we always try real endpoint, and only fallback on error.
-  try{
-    const data = await fetchJsonOrThrow(`${SCRIPT_URL}?action=lists&t=${Date.now()}`);
-    applyLists(data);
-    setPill("Connected ✓", true);
-    $("kpiLast").textContent = "lists OK";
-  }catch(err){
-    console.error(err);
-    applyLists(FALLBACK_LISTS);
-    setPill("Lists fallback (endpoint failed)");
-    $("kpiLast").textContent = "lists FAIL";
-    toast(`Lists load failed: ${err.message}`, "err");
-  }
+function applyLists(){
+  fillSelect($("person"), FALLBACK_LISTS.people);
+  fillSelect($("type"), FALLBACK_LISTS.types);
+  fillSelect($("payment"), FALLBACK_LISTS.paymentMethods);
+  fillSelect($("category"), FALLBACK_LISTS.categories);
+  fillSelect($("account"), FALLBACK_LISTS.accounts);
 }
 
 function escapeHtml(s){
@@ -355,18 +289,27 @@ function renderRecent(rows){
   }).join("");
 }
 
-async function loadRecent(){
+async function fetchJsonOrThrow(url, options){
+  let res;
   try{
-    const data = await fetchJsonOrThrow(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
-    renderRecent(data.rows || []);
-    $("kpiRecent").textContent = String((data.rows || []).length);
-    $("kpiLast").textContent = "recent OK";
-  }catch(err){
-    console.error(err);
-    $("kpiLast").textContent = "recent FAIL";
-    toast(`Recent load failed: ${err.message}`, "err");
-    // no local fallback here — user asked to throw errors
+    res = await fetch(url, options);
+  }catch(e){
+    throw new Error("Network/CORS blocked (fetch failed). If you see this on GitHub Pages, you likely need a proxy (Cloudflare Worker).");
   }
+
+  const text = await res.text();
+  try{
+    return JSON.parse(text);
+  }catch{
+    throw new Error(`Non-JSON response (${res.status}). Usually means redirect/auth page. Starts: ${text.slice(0, 80)}...`);
+  }
+}
+
+async function loadRecent(){
+  const data = await fetchJsonOrThrow(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
+  renderRecent(data.rows || []);
+  $("kpiRecent").textContent = String((data.rows || []).length);
+  $("kpiLast").textContent = "recent OK";
 }
 
 function buildPayload(){
@@ -375,15 +318,12 @@ function buildPayload(){
     person: $("person").value,
     type: $("type").value,
     category: $("category").value,
-    subcategory: $("subcategory").value || "",
     description: $("desc").value || "",
     amount: Number($("amount").value || 0),
     paymentMethod: $("payment").value,
     account: $("account").value || "",
     isFixed: $("isFixed").value || "No",
-    tags: $("tags").value || "",
-    notes: $("notes").value || "",
-    token: API_TOKEN || ""
+    token: API_TOKEN
   };
 }
 
@@ -393,84 +333,96 @@ function validate(p){
   if (!p.type) return "Type is required.";
   if (!p.category) return "Category is required.";
   if (!p.paymentMethod) return "Payment method is required.";
-  if (!Number.isFinite(p.amount) || p.amount <= 0) return "Amount must be a number > 0.";
+  if (!Number.isFinite(p.amount) || p.amount <= 0) return "Amount must be > 0.";
   return null;
 }
 
 async function postTx(payload){
-  return await fetchJsonOrThrow(SCRIPT_URL, {
+  // Use text/plain to avoid preflight in many browsers
+  const data = await fetchJsonOrThrow(SCRIPT_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(payload)
   });
+  return data;
 }
 
 function clearForm(){
   $("amount").value = "";
   $("desc").value = "";
-  $("tags").value = "";
-  $("notes").value = "";
   $("isFixed").value = "No";
-  // keep defaults:
   $("type").value = "Expense";
   $("date").value = todayISO();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-  // Update 4: auto date = today
+  // fill dropdowns instantly (no dependency on network)
+  applyLists();
+
+  // defaults
   $("date").value = todayISO();
-
-  // Load dropdowns
-  await loadLists();
-
-  // Update 2: default person to abhi if present
   $("person").value = "abhi";
-
-  // Update 5: type default = Expense
   $("type").value = "Expense";
 
-  // Load recent
   $("recentN").textContent = String(RECENT_N);
-  await loadRecent();
+  $("kpiQueued").textContent = "—"; // you said no local queue
+  $("kpiLast").textContent = "ready";
 
-  $("btnLoadLists").addEventListener("click", loadLists);
-  $("btnRefreshRecent").addEventListener("click", loadRecent);
+  $("btnLoadLists").addEventListener("click", () => {
+    applyLists();
+    toast("Lists reloaded.", "ok");
+  });
 
-  // Update 1: remove local queue behavior
-  $("btnSyncQueue").style.display = "none";
-  $("btnQueueOnly").style.display = "none";
-  $("kpiQueued").textContent = "—";
+  $("btnRefreshRecent").addEventListener("click", async () => {
+    try{
+      await loadRecent();
+      toast("Recent refreshed.", "ok");
+    }catch(err){
+      console.error(err);
+      $("kpiLast").textContent = "recent FAIL";
+      toast(err.message, "err");
+    }
+  });
 
   $("btnClear").addEventListener("click", () => {
     clearForm();
     toast("Cleared.", "ok");
   });
 
+  // initial recent load
+  try{
+    await loadRecent();
+  }catch(err){
+    console.error(err);
+    $("kpiLast").textContent = "recent FAIL";
+    toast(err.message, "err");
+  }
+
   $("txForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const p = buildPayload();
-    const err = validate(p);
+    const payload = buildPayload();
+    const err = validate(payload);
     if (err){ toast(err, "err"); return; }
 
     try{
-      const out = await postTx(p);
-      if (out && out.ok){
-        toast("Added to sheet ✓", "ok");
-        $("kpiLast").textContent = `ok row:${out.row || "?"}`;
-        clearForm();
-        await loadRecent();
-      }else{
-        throw new Error(out?.error || "Unknown error from Apps Script");
-      }
+      const out = await postTx(payload);
+      if (!out || !out.ok) throw new Error(out?.error || "Unknown error from Apps Script");
+      $("kpiLast").textContent = `saved row:${out.row || "?"}`;
+      toast("Saved to sheet ✓", "ok");
+      clearForm();
+
+      // refresh recent after save
+      await loadRecent();
     }catch(ex){
       console.error(ex);
-      $("kpiLast").textContent = "POST FAIL";
-      toast(`Save failed: ${ex.message}`, "err");
+      $("kpiLast").textContent = "save FAIL";
+      toast(ex.message, "err");
     }
   });
 });
 </script>
+
 
 </body>
 </html>
