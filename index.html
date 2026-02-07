@@ -4,6 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Budget — Transactions</title>
+
+  <!-- Google Identity Services (OAuth token client) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
   <style>
     :root{
       --bg:#0b0f14;
@@ -75,7 +79,6 @@
     }
     .btn.ghost{ border-color: var(--line); background: rgba(255,255,255,.02); font-weight:600; color: var(--muted); }
     .btn.bad{ border-color: rgba(251,113,133,.55); background: linear-gradient(180deg, rgba(251,113,133,.22), rgba(251,113,133,.08)); }
-    .hint{ color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 10px; }
     .toast{ margin-top: 12px; border:1px solid var(--line); background: rgba(255,255,255,.02); border-radius: 12px;
       padding: 10px 12px; font-size: 13px; color: var(--muted); display:none; }
     .toast.show{ display:block; } .toast.ok{ border-color: rgba(45,212,191,.45); color: rgba(45,212,191,.95); }
@@ -91,7 +94,6 @@
     .kpi{ flex: 1 1 140px; min-width: 140px; border: 1px solid var(--line); background: rgba(255,255,255,.02);
       border-radius: 12px; padding: 10px 12px; }
     .kpi .k{ font-size: 11px; color: var(--muted); } .kpi .v{ font-size: 16px; font-weight: 700; margin-top: 4px; }
-    footer{ margin-top: 14px; color: var(--muted); font-size: 12px; text-align:center; }
   </style>
 </head>
 <body>
@@ -100,6 +102,11 @@
       <div class="title">
         <h1>Budget — Transaction Entry</h1>
         <p>Personal Budget Tracker.</p>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <span class="pill" id="pillState">Not signed in</span>
+        <button class="btn ghost" id="btnAuth" type="button">Sign in</button>
+        <button class="btn ghost" id="btnSignOut" type="button">Sign out</button>
       </div>
     </header>
 
@@ -181,7 +188,7 @@
         </div>
         <div class="bd" style="padding:0;">
           <div style="padding: 12px 16px; border-bottom: 1px solid var(--line);" class="small">
-            Shows the last <span class="mono" id="recentN">20</span> rows returned by the script endpoint.
+            Shows the last <span class="mono" id="recentN">20</span> rows returned by the sheet.
           </div>
           <div style="overflow:auto; max-height: 560px;">
             <table>
@@ -196,18 +203,35 @@
             </table>
           </div>
           <div style="padding: 12px 16px;" class="small muted">
-            Want edit/delete? Tell me — we’ll add “Edit recent row” mode.
+            If this errors: it’s usually permissions. (Google doing Google things.)
           </div>
         </div>
       </section>
     </div>
   </div>
-<script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzw9YPxaz5XajF_463IehRCehrGASKSb54FvUmszaGc0slBe5Vi4tZqAXT6BNAknYk/exec";
-const API_TOKEN  = "dajZeKVE9SzRZFfJmVIGBSropZlift";
-const RECENT_N   = 20;
 
-// --- UI lists we keep local (only categories need separators) ---
+<script>
+/** =========================
+ *  YOU MUST FILL THESE 2
+ *  ========================= */
+const GOOGLE_OAUTH_CLIENT_ID = "749192975514-5q56jrs4clv8dmrmciirjm2d9ejdlpn0.apps.googleusercontent.com";
+// API key is optional but recommended (lets Google attribute quota + less weird behavior)
+const GOOGLE_API_KEY = "AIzaSyCRKqhI6gB-oYdRNcycMkVf6-xCVMLHMD0";
+
+/** =========================
+ *  Spreadsheet config
+ *  ========================= */
+const SPREADSHEET_ID = "14HIgGbjyEsmoT3zA0SI10OFbyW7wlNc453ZowbXktVU";
+const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
+const TX_SHEET = "Transactions";
+const LISTS_SHEET = "Lists";
+const LISTS_START_ROW = 2;
+
+const RECENT_N = 20;
+
+/** =========================
+ *  Local (static) categories (with separators)
+ *  ========================= */
 const STATIC = {
   categoriesIncome: ["Salary (Me)","Salary (Spouse)","Bonus","Side Income","Interest/Dividends","Refunds/Other"],
   categoriesExpense: [
@@ -227,6 +251,13 @@ function toast(msg, kind=""){
   el.textContent = msg;
   clearTimeout(toast._t);
   toast._t = setTimeout(()=>{ el.className = "toast"; }, 6500);
+}
+
+function setPill(text, ok=false){
+  const el = $("pillState");
+  el.textContent = text;
+  el.style.borderColor = ok ? "rgba(45,212,191,.45)" : "rgba(251,113,133,.45)";
+  el.style.color = ok ? "rgba(45,212,191,.95)" : "rgba(251,113,133,.95)";
 }
 
 function todayISO(){
@@ -271,108 +302,117 @@ function setFormEnabled(enabled){
   if (submitBtn) submitBtn.disabled = !enabled;
 }
 
-// ---------- URL builder that preserves existing query params (important for googleusercontent) ----------
-function buildUrl(base, params = {}) {
+/** =========================
+ *  OAuth (Google Identity Services) token client
+ *  ========================= */
+let tokenClient = null;
+let accessToken = null;
+
+function initAuth(){
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_OAUTH_CLIENT_ID,
+    scope: "https://www.googleapis.com/auth/spreadsheets",
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        accessToken = resp.access_token;
+        setPill("Signed in ✓", true);
+        $("kpiLast").textContent = "auth OK";
+        toast("Signed in ✓", "ok");
+        setFormEnabled(true);
+      } else {
+        accessToken = null;
+        setPill("Auth failed", false);
+        $("kpiLast").textContent = "auth FAIL";
+        toast("Auth failed.", "err");
+        setFormEnabled(false);
+      }
+    }
+  });
+}
+
+function signIn(){
+  if (!tokenClient) throw new Error("Auth client not ready yet.");
+  tokenClient.requestAccessToken({ prompt: "consent" });
+}
+
+function signOut(){
+  accessToken = null;
+  setPill("Not signed in", false);
+  $("kpiLast").textContent = "signed out";
+  setFormEnabled(false);
+}
+
+function requireAuth(){
+  if (!accessToken) throw new Error("Not signed in. Click Sign in.");
+}
+
+/** =========================
+ *  Sheets API helpers
+ *  ========================= */
+function sheetsUrl(path, query = {}){
+  const base = `${SHEETS_API_BASE}/${encodeURIComponent(SPREADSHEET_ID)}/${path}`;
   const u = new URL(base);
-  Object.entries(params).forEach(([k,v]) => u.searchParams.set(k, String(v)));
+  if (GOOGLE_API_KEY && GOOGLE_API_KEY !== "AIzaSyCRKqhI6gB-oYdRNcycMkVf6-xCVMLHMD0") u.searchParams.set("key", GOOGLE_API_KEY);
+  Object.entries(query).forEach(([k,v]) => u.searchParams.set(k, String(v)));
   return u.toString();
 }
 
-// ---------- JSONP (GET only) ----------
-function jsonp(url){
-  return new Promise((resolve, reject) => {
-    const cb = `cb_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const u = new URL(url);
-    u.searchParams.set("callback", cb);
+async function sheetsFetch(path, { method="GET", query={}, body=null } = {}){
+  requireAuth();
 
-    const script = document.createElement("script");
-
-    window[cb] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    function cleanup(){
-      try{ delete window[cb]; }catch{ window[cb] = undefined; }
-      script.remove();
-    }
-
-    script.src = u.toString();
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("JSONP failed (blocked / redirect / wrong deployment)."));
-    };
-
-    document.head.appendChild(script);
+  const res = await fetch(sheetsUrl(path, query), {
+    method,
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: body ? JSON.stringify(body) : null
   });
-}
 
-// ---------- “/u/1” bypass: resolve to googleusercontent once ----------
-let BASE_URL = SCRIPT_URL;
-let triedResolve = false;
+  const data = await res.json().catch(() => null);
 
-async function resolveBaseUrlIfNeeded(){
-  if (triedResolve) return;
-  triedResolve = true;
-
-  try{
-    // no-cors means we cannot read body, but we *can* often read response.url after redirects
-    const res = await fetch(buildUrl(SCRIPT_URL, { action: "ping", t: Date.now() }), {
-      method: "GET",
-      mode: "no-cors",
-      redirect: "follow",
-    });
-
-    // In many browsers, this becomes the final redirected googleusercontent URL
-    if (res && res.url && res.url.includes("script.googleusercontent.com")) {
-      BASE_URL = res.url; // keep full URL (it contains required keys)
-      $("kpiLast").textContent = "Resolved public endpoint ✓";
-    }
-  }catch{
-    // ignore: we'll keep SCRIPT_URL and let JSONP show the error
+  if (!res.ok){
+    const msg = data?.error?.message || `Sheets API error HTTP ${res.status}`;
+    throw new Error(msg);
   }
+  return data;
 }
 
-// ---------- API wrappers ----------
-async function apiGet(action, params = {}) {
-  await resolveBaseUrlIfNeeded();
+/** =========================
+ *  Lists & Recent
+ *  ========================= */
 
-  // Try once; if fails and we didn't resolve, try resolve then retry
-  try{
-    return await jsonp(buildUrl(BASE_URL, { action, t: Date.now(), ...params }));
-  }catch(err){
-    // One more attempt using resolved base (in case resolve succeeded after first try)
-    await resolveBaseUrlIfNeeded();
-    return await jsonp(buildUrl(BASE_URL, { action, t: Date.now(), ...params }));
-  }
+// Based on your earlier output: Lists tab seems like
+// A=Months (JAN..), B=Person, C=Type, D=PaymentMethod, E=Yes/No (ignore), F=Frequency (ignore)
+function parseLists(values){
+  const rows = values || [];
+  const col = (idx) => rows.map(r => (r[idx] ?? "")).map(x => String(x).trim()).filter(Boolean);
+  const uniq = (arr) => Array.from(new Set(arr));
+
+  return {
+    people: uniq(col(1)),         // B
+    types: uniq(col(2)),          // C
+    paymentMethods: uniq(col(3)), // D
+    accounts: ["—"]
+  };
 }
 
-// POST without CORS (we can’t read response; verify via recent)
-async function apiPostNoCors(payload){
-  await resolveBaseUrlIfNeeded();
-  await fetch(BASE_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload),
-  });
-}
+async function loadLists(){
+  const range = `${LISTS_SHEET}!A${LISTS_START_ROW}:F`;
+  const out = await sheetsFetch(`values/${encodeURIComponent(range)}`);
+  const lists = parseLists(out.values);
 
-// ---------- UI logic ----------
-function applyLists(lists){
-  // no fallback: if these are missing, treat as error
-  if (!lists || !lists.people?.length || !lists.types?.length || !lists.paymentMethods?.length) {
-    throw new Error("Lists response missing required fields (people/types/paymentMethods).");
+  if (!lists.people.length || !lists.types.length || !lists.paymentMethods.length){
+    throw new Error("Lists sheet missing people/types/paymentMethods values.");
   }
 
   fillSelect($("person"), lists.people);
   fillSelect($("type"), lists.types);
   fillSelect($("payment"), lists.paymentMethods);
-
-  // categories with separators (local)
   fillSelect($("category"), buildCategoryList(STATIC.categoriesIncome, STATIC.categoriesExpense));
+  fillSelect($("account"), lists.accounts);
 
-  fillSelect($("account"), lists.accounts?.length ? lists.accounts : ["—"]);
+  $("kpiLast").textContent = "lists OK";
 }
 
 function renderRecent(rows){
@@ -396,20 +436,35 @@ function renderRecent(rows){
   }).join("");
 }
 
-async function loadLists(){
-  const data = await apiGet("lists");
-  applyLists(data);
-  $("kpiLast").textContent = "lists OK";
-}
-
 async function loadRecent(){
-  const data = await apiGet("recent", { n: RECENT_N });
-  renderRecent(data.rows || []);
-  $("kpiRecent").textContent = String((data.rows || []).length);
+  // Read all A:J from row 2 down, slice last N
+  const range = `${TX_SHEET}!A2:J`;
+  const out = await sheetsFetch(`values/${encodeURIComponent(range)}`);
+
+  const rows = (out.values || []).map(r => ({
+    date: r[0] || "",
+    person: r[1] || "",
+    type: r[2] || "",
+    category: r[3] || "",
+    description: r[4] || "",
+    amount: Number(r[5] || 0),
+    paymentMethod: r[6] || "",
+    account: r[7] || "",
+    isFixed: r[8] || "",
+    createdAt: r[9] || "",
+  }));
+
+  const recent = rows.slice(-RECENT_N).reverse();
+  renderRecent(recent);
+
+  $("kpiRecent").textContent = String(recent.length);
   $("kpiLast").textContent = "recent OK";
-  return data.rows || [];
+  return recent;
 }
 
+/** =========================
+ *  Append transaction (A:J)
+ *  ========================= */
 function buildPayload(){
   return {
     date: $("date").value,
@@ -421,7 +476,6 @@ function buildPayload(){
     paymentMethod: $("payment").value,
     account: $("account").value || "",
     isFixed: $("isFixed").value || "No",
-    token: API_TOKEN
   };
 }
 
@@ -444,42 +498,78 @@ function clearForm(){
   $("date").value = todayISO();
 }
 
-function approxEq(a,b){ return Math.abs(Number(a)-Number(b)) < 0.01; }
+async function appendTx(p){
+  const row = [
+    String(p.date),
+    String(p.person),
+    String(p.type),
+    String(p.category),
+    String(p.description || ""),
+    Number(p.amount || 0),
+    String(p.paymentMethod),
+    String(p.account || ""),
+    String(p.isFixed || "No"),
+    new Date().toISOString(),
+  ];
 
+  const range = `${TX_SHEET}!A:J`;
+  const path = `values/${encodeURIComponent(range)}:append`;
+
+  await sheetsFetch(path, {
+    method: "POST",
+    query: {
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS"
+    },
+    body: { values: [row] }
+  });
+}
+
+/** =========================
+ *  Boot
+ *  ========================= */
 window.addEventListener("DOMContentLoaded", async () => {
   $("date").value = todayISO();
   $("recentN").textContent = String(RECENT_N);
-  $("kpiQueued").textContent = "—"; // no queue
+  $("kpiQueued").textContent = "—";
 
   setFormEnabled(false);
-  $("kpiLast").textContent = "connecting…";
+  setPill("Not signed in", false);
+  $("kpiLast").textContent = "auth required";
+
+  // Wait until Google script loads (gsi client is async/defer)
+  const waitForGsi = async () => {
+    for (let i=0; i<50; i++){
+      if (window.google?.accounts?.oauth2) return;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    throw new Error("Google auth library failed to load.");
+  };
 
   try{
-    await loadLists();
-    setFormEnabled(true);
-
-    // defaults
-    $("person").value = "Abhi";
-    $("type").value = "Expense";
-
-    await loadRecent();
+    await waitForGsi();
+    initAuth();
   }catch(e){
     console.error(e);
-    $("kpiLast").textContent = "connect FAIL";
     toast(e.message, "err");
-    setFormEnabled(false);
     return;
   }
 
+  $("btnAuth").addEventListener("click", () => {
+    try{ signIn(); } catch(e){ toast(e.message, "err"); }
+  });
+
+  $("btnSignOut").addEventListener("click", () => {
+    signOut();
+    toast("Signed out.", "ok");
+  });
+
   $("btnLoadLists").addEventListener("click", async () => {
     try{
-      setFormEnabled(false);
       await loadLists();
-      setFormEnabled(true);
-      toast("Lists reloaded.", "ok");
+      toast("Lists loaded.", "ok");
     }catch(e){
       toast(e.message, "err");
-      setFormEnabled(false);
     }
   });
 
@@ -501,56 +591,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     const err = validate(p);
     if (err){ toast(err, "err"); return; }
 
-    $("kpiLast").textContent = "sending…";
-
-    // snapshot top row for verification
-    let beforeTop = null;
     try{
-      const before = await loadRecent();
-      beforeTop = before && before[0] ? before[0] : null;
-    }catch{ /* ignore */ }
-
-    try{
-      await apiPostNoCors(p);
-    }catch(ex){
-      console.error(ex);
-      $("kpiLast").textContent = "send FAIL";
-      toast("POST blocked by browser/network.", "err");
-      return;
-    }
-
-    // verify via recent
-    await new Promise(r => setTimeout(r, 900));
-
-    let after = [];
-    try{
-      after = await loadRecent();
-    }catch(ex){
-      $("kpiLast").textContent = "verify FAIL";
-      toast("Sent, but couldn’t verify (recent fetch failed).", "warn");
-      return;
-    }
-
-    const top = after[0];
-    const looksLikeSaved =
-      top &&
-      top.date === p.date &&
-      String(top.person) === String(p.person) &&
-      String(top.type) === String(p.type) &&
-      String(top.category) === String(p.category) &&
-      String(top.paymentMethod) === String(p.paymentMethod) &&
-      approxEq(top.amount, p.amount) &&
-      (!beforeTop || top.createdAt !== beforeTop.createdAt);
-
-    if (looksLikeSaved){
+      $("kpiLast").textContent = "saving…";
+      await appendTx(p);
       $("kpiLast").textContent = "saved ✓";
       toast("Saved to sheet ✓", "ok");
       clearForm();
-    }else{
-      $("kpiLast").textContent = "not saved?";
-      toast("Sent, but it didn’t show up in Recent. (Token/deploy/permissions)", "err");
+      await loadRecent();
+    }catch(ex){
+      console.error(ex);
+      $("kpiLast").textContent = "save FAIL";
+      toast(ex.message, "err");
     }
   });
+
+  // UX: after sign-in, auto-load lists + recent
+  // (we keep form disabled until auth completes)
+  // You can also manually click Reload lists / Refresh
 });
 </script>
 </body>
