@@ -208,19 +208,18 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiX
 const API_TOKEN  = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
 const RECENT_N   = 20;
 
-const FALLBACK_LISTS = {
+const LISTS_FALLBACK = {
   people: ["abhi","athira","Shared"],
   types: ["Expense","Income","Transfer"],
   paymentMethods: ["Cash","Card","UPI","Bank Transfer","Wallet"],
-  categories: [
-    { label: "--- Income ---", disabled: true },
-    "Salary (Me)","Salary (Spouse)","Bonus","Side Income","Interest/Dividends","Refunds/Other",
-    { label: "--- Expenses ---", disabled: true },
+  // we will add separators in UI
+  categoriesIncome: ["Salary (Me)","Salary (Spouse)","Bonus","Side Income","Interest/Dividends","Refunds/Other"],
+  categoriesExpense: [
     "Rent / Housing","Grocery","Food (Dining)","Food (Delivery)","Petrol / Fuel",
-    "Transport (Cab/Bus/Train)","Bills (Electricity/Water/Gas/Internet/Phone)","Hospital / Medical",
-    "Insurance","EMI / Loans","Entertainment","Shopping","Subscriptions","Cigarettes / Drinks",
-    "Personal Care","Gifts/Donations","Travel","Education","Kids/Family","Savings/Investments",
-    "Miscellaneous / Buffer"
+    "Transport (Cab/Bus/Train)","Bills (Electricity/Water/Gas/Internet/Phone)",
+    "Hospital / Medical","Insurance","EMI / Loans","Entertainment","Shopping","Subscriptions",
+    "Cigarettes / Drinks","Personal Care","Gifts/Donations","Travel","Education","Kids/Family",
+    "Savings/Investments","Miscellaneous / Buffer"
   ],
   accounts: ["—"]
 };
@@ -241,32 +240,69 @@ function todayISO(){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
+}
+
 function fillSelect(selectEl, values){
   selectEl.innerHTML = "";
   for (const v of values){
     const opt = document.createElement("option");
     if (typeof v === "string"){
-      opt.value = v;
-      opt.textContent = v;
+      opt.value = v; opt.textContent = v;
     } else {
-      opt.value = "";
-      opt.textContent = v.label ?? "";
-      opt.disabled = !!v.disabled;
+      opt.value = ""; opt.textContent = v.label ?? ""; opt.disabled = true;
     }
     selectEl.appendChild(opt);
   }
 }
 
-function applyLists(){
-  fillSelect($("person"), FALLBACK_LISTS.people);
-  fillSelect($("type"), FALLBACK_LISTS.types);
-  fillSelect($("payment"), FALLBACK_LISTS.paymentMethods);
-  fillSelect($("category"), FALLBACK_LISTS.categories);
-  fillSelect($("account"), FALLBACK_LISTS.accounts);
+function buildCategoryList(income, expense){
+  return [
+    {label:"--- Income ---"},
+    ...income,
+    {label:"--- Expenses ---"},
+    ...expense
+  ];
 }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
+// JSONP helper (CORS-proof for GET)
+function jsonp(url){
+  return new Promise((resolve, reject) => {
+    const cb = `cb_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const sep = url.includes("?") ? "&" : "?";
+    const script = document.createElement("script");
+
+    window[cb] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    function cleanup(){
+      try{ delete window[cb]; }catch{ window[cb] = undefined; }
+      script.remove();
+    }
+
+    script.src = `${url}${sep}callback=${cb}`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("JSONP failed: endpoint not public / wrong deployment / blocked"));
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
+function applyLists(lists){
+  fillSelect($("person"), lists.people?.length ? lists.people : LISTS_FALLBACK.people);
+  fillSelect($("type"), lists.types?.length ? lists.types : LISTS_FALLBACK.types);
+  fillSelect($("payment"), lists.paymentMethods?.length ? lists.paymentMethods : LISTS_FALLBACK.paymentMethods);
+
+  const income = LISTS_FALLBACK.categoriesIncome;
+  const expense = LISTS_FALLBACK.categoriesExpense;
+  fillSelect($("category"), buildCategoryList(income, expense));
+
+  fillSelect($("account"), lists.accounts?.length ? lists.accounts : LISTS_FALLBACK.accounts);
 }
 
 function renderRecent(rows){
@@ -275,6 +311,7 @@ function renderRecent(rows){
     body.innerHTML = `<tr><td colspan="6" class="muted">No data returned.</td></tr>`;
     return;
   }
+
   body.innerHTML = rows.map(r => {
     const amt = Number(r.amount || 0);
     return `
@@ -289,27 +326,25 @@ function renderRecent(rows){
   }).join("");
 }
 
-async function fetchJsonOrThrow(url, options){
-  let res;
+async function loadLists(){
   try{
-    res = await fetch(url, options);
-  }catch(e){
-    throw new Error("Network/CORS blocked (fetch failed). If you see this on GitHub Pages, you likely need a proxy (Cloudflare Worker).");
-  }
-
-  const text = await res.text();
-  try{
-    return JSON.parse(text);
-  }catch{
-    throw new Error(`Non-JSON response (${res.status}). Usually means redirect/auth page. Starts: ${text.slice(0, 80)}...`);
+    const data = await jsonp(`${SCRIPT_URL}?action=lists&t=${Date.now()}`);
+    applyLists(data || {});
+    $("kpiLast").textContent = "lists OK";
+  }catch(err){
+    console.error(err);
+    applyLists({});
+    $("kpiLast").textContent = "lists fallback";
+    toast(err.message, "warn");
   }
 }
 
 async function loadRecent(){
-  const data = await fetchJsonOrThrow(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
+  const data = await jsonp(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
   renderRecent(data.rows || []);
   $("kpiRecent").textContent = String((data.rows || []).length);
   $("kpiLast").textContent = "recent OK";
+  return data.rows || [];
 }
 
 function buildPayload(){
@@ -334,17 +369,18 @@ function validate(p){
   if (!p.category) return "Category is required.";
   if (!p.paymentMethod) return "Payment method is required.";
   if (!Number.isFinite(p.amount) || p.amount <= 0) return "Amount must be > 0.";
+  if (p.category.startsWith("---")) return "Pick a real category (not the separator).";
   return null;
 }
 
-async function postTx(payload){
-  // Use text/plain to avoid preflight in many browsers
-  const data = await fetchJsonOrThrow(SCRIPT_URL, {
+// POST without CORS (we can’t read response, but it *sends*)
+async function postTxNoCors(payload){
+  await fetch(SCRIPT_URL, {
     method: "POST",
+    mode: "no-cors",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(payload)
   });
-  return data;
 }
 
 function clearForm(){
@@ -355,73 +391,93 @@ function clearForm(){
   $("date").value = todayISO();
 }
 
-window.addEventListener("DOMContentLoaded", async () => {
-  // fill dropdowns instantly (no dependency on network)
-  applyLists();
+function approxEq(a,b){ return Math.abs(Number(a)-Number(b)) < 0.01; }
 
-  // defaults
+window.addEventListener("DOMContentLoaded", async () => {
   $("date").value = todayISO();
+  $("kpiQueued").textContent = "—"; // no local queue
+  $("recentN").textContent = String(RECENT_N);
+
+  await loadLists();
+
   $("person").value = "abhi";
   $("type").value = "Expense";
 
-  $("recentN").textContent = String(RECENT_N);
-  $("kpiQueued").textContent = "—"; // you said no local queue
-  $("kpiLast").textContent = "ready";
+  try{ await loadRecent(); }
+  catch(e){ toast(e.message, "err"); }
 
-  $("btnLoadLists").addEventListener("click", () => {
-    applyLists();
+  $("btnLoadLists").addEventListener("click", async () => {
+    await loadLists();
     toast("Lists reloaded.", "ok");
   });
 
   $("btnRefreshRecent").addEventListener("click", async () => {
-    try{
-      await loadRecent();
-      toast("Recent refreshed.", "ok");
-    }catch(err){
-      console.error(err);
-      $("kpiLast").textContent = "recent FAIL";
-      toast(err.message, "err");
-    }
+    try{ await loadRecent(); toast("Recent refreshed.", "ok"); }
+    catch(e){ toast(e.message, "err"); }
   });
 
-  $("btnClear").addEventListener("click", () => {
-    clearForm();
-    toast("Cleared.", "ok");
-  });
-
-  // initial recent load
-  try{
-    await loadRecent();
-  }catch(err){
-    console.error(err);
-    $("kpiLast").textContent = "recent FAIL";
-    toast(err.message, "err");
-  }
+  $("btnClear").addEventListener("click", () => { clearForm(); toast("Cleared.", "ok"); });
 
   $("txForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
+    e.preventDefault(); // <- stops the refresh, permanently
 
-    const payload = buildPayload();
-    const err = validate(payload);
+    const p = buildPayload();
+    const err = validate(p);
     if (err){ toast(err, "err"); return; }
 
-    try{
-      const out = await postTx(payload);
-      if (!out || !out.ok) throw new Error(out?.error || "Unknown error from Apps Script");
-      $("kpiLast").textContent = `saved row:${out.row || "?"}`;
-      toast("Saved to sheet ✓", "ok");
-      clearForm();
+    $("kpiLast").textContent = "sending…";
+    toast("Sending…", "warn");
 
-      // refresh recent after save
-      await loadRecent();
+    // snapshot current recent top row to detect change
+    let beforeTop = null;
+    try{
+      const before = await loadRecent();
+      beforeTop = before && before[0] ? before[0] : null;
+    }catch{ /* ignore */ }
+
+    try{
+      await postTxNoCors(p);
     }catch(ex){
       console.error(ex);
-      $("kpiLast").textContent = "save FAIL";
-      toast(ex.message, "err");
+      $("kpiLast").textContent = "send FAIL";
+      toast("POST failed (browser blocked it).", "err");
+      return;
+    }
+
+    // verify by reloading recent via JSONP
+    await new Promise(r => setTimeout(r, 900));
+    let after = [];
+    try{
+      after = await loadRecent();
+    }catch(ex){
+      $("kpiLast").textContent = "verify FAIL";
+      toast("Sent, but couldn’t verify (recent fetch failed).", "warn");
+      return;
+    }
+
+    const top = after[0];
+    const looksLikeSaved =
+      top &&
+      top.date === p.date &&
+      String(top.person) === String(p.person) &&
+      String(top.type) === String(p.type) &&
+      String(top.category) === String(p.category) &&
+      String(top.paymentMethod) === String(p.paymentMethod) &&
+      approxEq(top.amount, p.amount) &&
+      (!beforeTop || top.createdAt !== beforeTop.createdAt);
+
+    if (looksLikeSaved){
+      $("kpiLast").textContent = "saved ✓";
+      toast("Saved to sheet ✓", "ok");
+      clearForm();
+    }else{
+      $("kpiLast").textContent = "not saved?";
+      toast("Sent, but it didn’t show up in Recent. Likely token/deploy issue.", "err");
     }
   });
 });
 </script>
+
 
 
 </body>
