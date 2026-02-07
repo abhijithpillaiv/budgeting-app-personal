@@ -328,7 +328,7 @@ function renderRecent(rows){
 
 async function loadLists(){
   try{
-    const data = await jsonp(`${SCRIPT_URL}&action=lists`);
+    const data = await jsonp(`${SCRIPT_URL}?action=lists`);
     applyLists(data || {});
     $("kpiLast").textContent = "lists OK";
   }catch(err){
