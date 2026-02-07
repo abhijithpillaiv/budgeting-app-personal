@@ -279,8 +279,8 @@ const GOOGLE_OAUTH_CLIENT_ID = "749192975514-5q56jrs4clv8dmrmciirjm2d9ejdlpn0.ap
 const GOOGLE_API_KEY         = "AIzaSyCRKqhI6gB-oYdRNcycMkVf6-xCVMLHMD0"; // optional but recommended
 
 const SPREADSHEET_ID = "14HIgGbjyEsmoT3zA0SI10OFbyW7wlNc453ZowbXktVU";
-const TX_SHEET   = "Transactions";
-const LISTS_SHEET = "Lists";
+const TX_SHEET       = "Transactions";
+const LISTS_SHEET    = "Lists";
 const LISTS_START_ROW = 2;
 
 const RECENT_N = 20;
@@ -300,9 +300,11 @@ const STATIC = {
 };
 
 const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
-
 const $ = (id) => document.getElementById(id);
 
+/** =========================================================
+ *  UI helpers
+ *  ========================================================= */
 function toast(msg, kind=""){
   const el = $("toast");
   el.className = "toast show" + (kind ? " " + kind : "");
@@ -389,65 +391,200 @@ function ymFromISODate(isoDate){
 }
 
 /** =========================================================
- *  OAuth (Google Identity Services)
+ *  OAuth (Google Identity Services) + "stay signed in"
+ *  =========================================================
+ *  Reality check:
+ *  - Token model access tokens are short-lived.
+ *  - So we persist the current token + expiry to survive reloads,
+ *    and we silently request a fresh token when near expiry.
+ *
+ *  ⚠️ Security note: storing tokens in localStorage is vulnerable to XSS.
+ *  This is fine for a personal app you fully control, but don't do it on untrusted pages.
  *  ========================================================= */
 let tokenClient = null;
 let accessToken = null;
+let tokenExpiryMs = 0;
+
+let refreshTimer = null;
+let dataLoadedOnce = false;
+let silentAuthAttempt = false;
+
+// Used to "await" token acquisition (interactive or silent)
+let pendingAuth = null;
+
+const AUTH_STORE = {
+  tokenKey: "budget_gis_access_token",
+  expKey:   "budget_gis_access_expiry_ms",
+};
+
+function saveSession(resp){
+  accessToken = resp.access_token;
+  const expiresInSec = Number(resp.expires_in || 0);
+  tokenExpiryMs = Date.now() + expiresInSec * 1000;
+
+  localStorage.setItem(AUTH_STORE.tokenKey, accessToken);
+  localStorage.setItem(AUTH_STORE.expKey, String(tokenExpiryMs));
+
+  scheduleSilentRefresh();
+}
+
+function restoreSession(){
+  const t = localStorage.getItem(AUTH_STORE.tokenKey);
+  const exp = Number(localStorage.getItem(AUTH_STORE.expKey) || 0);
+  if (!t || !exp) return false;
+
+  // treat as expired if less than 30s left
+  if (Date.now() >= exp - 30_000){
+    clearSession();
+    return false;
+  }
+
+  accessToken = t;
+  tokenExpiryMs = exp;
+  return true;
+}
+
+function clearSession(){
+  localStorage.removeItem(AUTH_STORE.tokenKey);
+  localStorage.removeItem(AUTH_STORE.expKey);
+
+  accessToken = null;
+  tokenExpiryMs = 0;
+
+  if (refreshTimer){
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function scheduleSilentRefresh(){
+  if (refreshTimer) clearTimeout(refreshTimer);
+  if (!tokenClient || !accessToken || !tokenExpiryMs) return;
+
+  // Refresh ~2 minutes before expiry (best-effort)
+  const SKEW_MS = 2 * 60 * 1000;
+  const waitMs = Math.max(10_000, tokenExpiryMs - Date.now() - SKEW_MS);
+
+  refreshTimer = setTimeout(async () => {
+    try{
+      await requestToken("none"); // silent
+      // no toast spam
+      $("kpiLast").textContent = "token refreshed";
+    }catch(e){
+      // silent refresh failed → signed out state
+      clearSession();
+      setPill("Not signed in", false);
+      $("kpiLast").textContent = "auth required";
+      setFormEnabled(false);
+    }
+  }, waitMs);
+}
 
 function initAuth(){
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_OAUTH_CLIENT_ID,
     scope: "https://www.googleapis.com/auth/spreadsheets",
-    callback: async (resp) => {
-      if (resp && resp.access_token) {
-        accessToken = resp.access_token;
+
+    callback: (resp) => {
+      // Success
+      if (resp && resp.access_token){
+        saveSession(resp);
+
         setPill("Signed in ✓", true);
-        $("kpiLast").textContent = "auth OK";
-        toast("Signed in ✓", "ok");
 
-        // ✅ REQUIREMENT #1: auto-load lists + recent right after signing in
-        try{
-          setFormEnabled(false);
-          $("kpiLast").textContent = "loading…";
-          await loadLists();
-          await loadRecent();
-          setFormEnabled(true);
-
-          // sensible defaults
-          $("person").value = $("person").options[0]?.value || $("person").value;
-          $("type").value = "Expense";
-        }catch(e){
-          console.error(e);
-          toast(e.message, "err");
-          $("kpiLast").textContent = "load FAIL";
-          setFormEnabled(false);
+        // Resolve any waiter first
+        if (pendingAuth?.resolve){
+          const r = pendingAuth.resolve;
+          pendingAuth = null;
+          silentAuthAttempt = false;
+          r(accessToken);
+          return;
         }
-      } else {
-        accessToken = null;
-        setPill("Auth failed", false);
-        $("kpiLast").textContent = "auth FAIL";
-        toast("Auth failed.", "err");
-        setFormEnabled(false);
+
+        // If nobody is awaiting, keep UI calm
+        silentAuthAttempt = false;
+        return;
       }
+
+      // Failure (includes prompt:"none" failing with "interaction_required")
+      const msg = resp?.error_description || resp?.error || "Auth failed.";
+      clearSession();
+      setPill("Not signed in", false);
+      $("kpiLast").textContent = resp?.error || "auth FAIL";
+      setFormEnabled(false);
+
+      if (pendingAuth?.reject){
+        const rej = pendingAuth.reject;
+        pendingAuth = null;
+        const err = new Error(msg);
+        silentAuthAttempt = false;
+        rej(err);
+        return;
+      }
+
+      if (!silentAuthAttempt) toast(msg, "err");
+      silentAuthAttempt = false;
+    },
+
+    error_callback: (e) => {
+      console.error("OAuth error_callback:", e);
+      const msg = "Auth popup blocked/closed. Click Sign in again.";
+
+      clearSession();
+      setPill("Not signed in", false);
+      $("kpiLast").textContent = e?.type || "oauth_error";
+      setFormEnabled(false);
+
+      if (pendingAuth?.reject){
+        const rej = pendingAuth.reject;
+        pendingAuth = null;
+        silentAuthAttempt = false;
+        rej(new Error(msg));
+        return;
+      }
+
+      if (!silentAuthAttempt) toast(msg, "warn");
+      silentAuthAttempt = false;
     }
   });
 }
 
+// Acquire token (interactive or silent) and allow awaiting it.
+function requestToken(promptMode){
+  return new Promise((resolve, reject) => {
+    if (!tokenClient) return reject(new Error("Auth client not ready yet."));
+
+    pendingAuth = { resolve, reject };
+    silentAuthAttempt = (promptMode === "none");
+
+    tokenClient.requestAccessToken({ prompt: promptMode });
+  });
+}
+
 function signIn(){
-  if (!tokenClient) throw new Error("Auth client not ready yet.");
-  tokenClient.requestAccessToken({ prompt: "consent" });
+  // Best experience: prompt only if needed
+  return requestToken("");
 }
 
 function signOut(){
-  accessToken = null;
+  // Optional revoke (uncomment if you want to fully revoke consent)
+  // if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
+
+  clearSession();
   setPill("Not signed in", false);
   $("kpiLast").textContent = "signed out";
   toast("Signed out.", "ok");
   setFormEnabled(false);
+  dataLoadedOnce = false;
 }
 
 function requireAuth(){
   if (!accessToken) throw new Error("Not signed in. Click Sign in.");
+
+  // If our stored expiry says it's basically dead, force refresh
+  if (tokenExpiryMs && Date.now() >= tokenExpiryMs - 10_000){
+    throw new Error("Session expired. Please sign in again.");
+  }
 }
 
 /** =========================================================
@@ -461,7 +598,7 @@ function sheetsUrl(path, query = {}){
   return u.toString();
 }
 
-async function sheetsFetch(path, { method="GET", query={}, body=null } = {}){
+async function sheetsFetch(path, { method="GET", query={}, body=null, _retry=false } = {}){
   requireAuth();
 
   const res = await fetch(sheetsUrl(path, query), {
@@ -472,6 +609,16 @@ async function sheetsFetch(path, { method="GET", query={}, body=null } = {}){
     },
     body: body ? JSON.stringify(body) : null
   });
+
+  // If token is invalid/expired, try one silent refresh then retry once.
+  if ((res.status === 401 || res.status === 403) && !_retry){
+    try{
+      await requestToken("none");
+      return sheetsFetch(path, { method, query, body, _retry:true });
+    }catch(e){
+      // fall through and surface the real error below
+    }
+  }
 
   const data = await res.json().catch(() => null);
 
@@ -484,7 +631,7 @@ async function sheetsFetch(path, { method="GET", query={}, body=null } = {}){
 
 /** =========================================================
  *  Lists (from Lists tab)
- *  Lists tab layout you showed:
+ *  Layout:
  *  A = Months (JAN..DEC) ignore
  *  B = Person
  *  C = Type
@@ -532,9 +679,9 @@ async function loadLists(){
 
 /** =========================================================
  *  Recent (Transactions tab)
- *  Your Transactions columns now:
+ *  Columns:
  *  A Date | B Year | C Month | D Person | E Type | F Category | G Amount | H Payment | I IsFixed | J Description
- *  UI must IGNORE Year/Month but read/write them.
+ *  UI IGNORE Year/Month but read/write them.
  *  ========================================================= */
 function renderRecent(rows){
   const body = $("recentBody");
@@ -558,23 +705,22 @@ function renderRecent(rows){
 }
 
 async function loadRecent(){
-  // Read A:J from row 2 down
   const range = `${TX_SHEET}!A2:J`;
   const out = await sheetsFetch(`values/${encodeURIComponent(range)}`, {
     query: { valueRenderOption: "FORMATTED_VALUE" }
   });
 
   const rows = (out.values || []).map(r => ({
-    date: r[0] || "",             // A Date (formatted like 1-Feb-2025)
+    date: r[0] || "",                // A Date
     // r[1] Year (ignored in UI)
     // r[2] Month (ignored in UI)
-    person: r[3] || "",           // D Person
-    type: r[4] || "",             // E Type
-    category: r[5] || "",         // F Category
-    amount: parseAmount(r[6] || 0), // ✅ G Amount (fixes your "0" problem)
-    paymentMethod: r[7] || "",    // H Payment
-    isFixed: r[8] || "",          // I IsFixed
-    description: r[9] || "",      // J Description
+    person: r[3] || "",              // D Person
+    type: r[4] || "",                // E Type
+    category: r[5] || "",            // F Category
+    amount: parseAmount(r[6] || 0),  // G Amount
+    paymentMethod: r[7] || "",       // H Payment
+    isFixed: r[8] || "",             // I IsFixed
+    description: r[9] || "",         // J Description
   }));
 
   const recent = rows.slice(-RECENT_N).reverse();
@@ -586,12 +732,12 @@ async function loadRecent(){
 }
 
 /** =========================================================
- *  Append transaction (must follow sheet format)
- *  Insert: Date(yyyy-mm-dd) + Year + Month + Person + Type + Category + Amount(number) + Pay + IsFixed + Desc
+ *  Append transaction
+ *  Insert: Date + Year + Month + Person + Type + Category + Amount + Pay + IsFixed + Desc
  *  ========================================================= */
 function buildPayload(){
   return {
-    date: $("date").value,                 // yyyy-mm-dd
+    date: $("date").value,                  // yyyy-mm-dd
     person: $("person").value,
     type: $("type").value,
     category: $("category").value,
@@ -624,13 +770,13 @@ async function appendTx(p){
   const { year, month } = ymFromISODate(p.date);
 
   const row = [
-    String(p.date),               // A Date (yyyy-mm-dd) -> sheet formats to 1-Feb-2025
+    String(p.date),               // A Date (yyyy-mm-dd)
     Number(year),                 // B Year
     Number(month),                // C Month
     String(p.person),             // D Person
     String(p.type),               // E Type
     String(p.category),           // F Category
-    Number(p.amount || 0),        // G Amount (no ₹, no commas)
+    Number(p.amount || 0),        // G Amount (number)
     String(p.paymentMethod),      // H Payment Method
     String(p.isFixed || "No"),    // I Is Fixed?
     String(p.description || "")   // J Description
@@ -647,6 +793,25 @@ async function appendTx(p){
     },
     body: { values: [row] }
   });
+}
+
+/** =========================================================
+ *  Auth -> load data once
+ *  ========================================================= */
+async function postAuthInitIfNeeded(){
+  if (dataLoadedOnce) return;
+  dataLoadedOnce = true;
+
+  setFormEnabled(false);
+  $("kpiLast").textContent = "loading…";
+
+  await loadLists();
+  await loadRecent();
+
+  setFormEnabled(true);
+
+  // sensible defaults
+  $("type").value = "Expense";
 }
 
 /** =========================================================
@@ -679,8 +844,50 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  $("btnAuth").addEventListener("click", () => {
-    try{ signIn(); } catch(e){ toast(e.message, "err"); }
+  // 1) Try restore from localStorage (survives reloads)
+  if (restoreSession()){
+    setPill("Signed in ✓ (restored)", true);
+    $("kpiLast").textContent = "auth restored";
+    try{
+      await postAuthInitIfNeeded();
+      scheduleSilentRefresh();
+    }catch(e){
+      console.error(e);
+      clearSession();
+      setPill("Not signed in", false);
+      $("kpiLast").textContent = "auth required";
+      setFormEnabled(false);
+    }
+  }
+
+  // 2) If not restored, attempt silent auth (no UI)
+  if (!accessToken){
+    try{
+      $("kpiLast").textContent = "checking session…";
+      await requestToken("none");
+      setPill("Signed in ✓", true);
+      $("kpiLast").textContent = "auth OK";
+      await postAuthInitIfNeeded();
+    }catch(_e){
+      // silent auth not available → user must click Sign in
+      $("kpiLast").textContent = "auth required";
+      setPill("Not signed in", false);
+      setFormEnabled(false);
+    }
+  }
+
+  $("btnAuth").addEventListener("click", async () => {
+    try{
+      $("kpiLast").textContent = "auth…";
+      await signIn();                 // interactive if needed
+      setPill("Signed in ✓", true);
+      $("kpiLast").textContent = "auth OK";
+      await postAuthInitIfNeeded();   // ✅ auto-load lists + recent
+      toast("Signed in ✓", "ok");
+    }catch(e){
+      toast(e.message, "err");
+      $("kpiLast").textContent = "auth FAIL";
+    }
   });
 
   $("btnSignOut").addEventListener("click", () => {
@@ -742,5 +949,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 });
 </script>
+
 </body>
 </html>
