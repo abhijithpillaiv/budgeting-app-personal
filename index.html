@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Budget — Transactions</title>
 
-  <!-- Google Identity Services (OAuth token client) -->
+  <!-- Google Identity Services (OAuth token) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
@@ -39,6 +39,7 @@
     .title{ display:flex; flex-direction:column; gap:4px; }
     .title h1{ margin:0; font-size: 20px; letter-spacing:.2px; }
     .title p{ margin:0; color:var(--muted); font-size: 13px; }
+
     .pill{
       font-family:var(--mono);
       font-size: 12px;
@@ -47,9 +48,15 @@
       background: rgba(255,255,255,.02);
       border-radius: 999px;
       color: var(--muted);
+      white-space:nowrap;
     }
+
     .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap: 16px; align-items:start; }
-    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } header{ align-items:flex-start; flex-direction:column; } }
+    @media (max-width: 900px){
+      .grid{ grid-template-columns: 1fr; }
+      header{ align-items:flex-start; flex-direction:column; }
+    }
+
     .card{
       background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
       border: 1px solid var(--line);
@@ -57,56 +64,111 @@
       box-shadow: var(--shadow);
       overflow:hidden;
     }
-    .card .hd{ padding: 14px 16px; background: rgba(255,255,255,.02); border-bottom: 1px solid var(--line);
-      display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .card .hd{
+      padding: 14px 16px;
+      background: rgba(255,255,255,.02);
+      border-bottom: 1px solid var(--line);
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
     .card .hd h2{ margin:0; font-size: 14px; letter-spacing:.2px; }
     .card .hd .right{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
     .card .bd{ padding: 16px; }
     .row{ display:grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
     .field{ grid-column: span 6; } .field.sm{ grid-column: span 4; } .field.xs{ grid-column: span 3; } .field.full{ grid-column: 1 / -1; }
     @media (max-width: 700px){ .field, .field.sm, .field.xs{ grid-column: 1 / -1; } }
+
     label{ display:block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+
     input, select, textarea{
-      width:100%; padding: 10px 10px; border-radius: 12px; border: 1px solid var(--line);
-      background: rgba(0,0,0,.25); color: var(--text); outline:none; transition: border-color .15s ease;
+      width:100%;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      outline:none;
+      transition: border-color .15s ease;
     }
-    input:focus, select:focus, textarea:focus{ border-color: rgba(124,92,255,.65); box-shadow: 0 0 0 3px rgba(124,92,255,.15); }
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(124,92,255,.65);
+      box-shadow: 0 0 0 3px rgba(124,92,255,.15);
+    }
     textarea{ min-height: 90px; resize: vertical; }
+
     .btn{
-      cursor:pointer; border:1px solid rgba(124,92,255,.55);
+      cursor:pointer;
+      border:1px solid rgba(124,92,255,.55);
       background: linear-gradient(180deg, rgba(124,92,255,.25), rgba(124,92,255,.12));
-      color: var(--text); padding: 10px 12px; border-radius: 12px; font-weight: 600; letter-spacing:.2px;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      letter-spacing:.2px;
     }
-    .btn.ghost{ border-color: var(--line); background: rgba(255,255,255,.02); font-weight:600; color: var(--muted); }
-    .btn.bad{ border-color: rgba(251,113,133,.55); background: linear-gradient(180deg, rgba(251,113,133,.22), rgba(251,113,133,.08)); }
-    .toast{ margin-top: 12px; border:1px solid var(--line); background: rgba(255,255,255,.02); border-radius: 12px;
-      padding: 10px 12px; font-size: 13px; color: var(--muted); display:none; }
-    .toast.show{ display:block; } .toast.ok{ border-color: rgba(45,212,191,.45); color: rgba(45,212,191,.95); }
+    .btn.ghost{
+      border-color: var(--line);
+      background: rgba(255,255,255,.02);
+      font-weight:600;
+      color: var(--muted);
+    }
+    .btn.bad{
+      border-color: rgba(251,113,133,.55);
+      background: linear-gradient(180deg, rgba(251,113,133,.22), rgba(251,113,133,.08));
+    }
+
+    .toast{
+      margin-top: 12px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: var(--muted);
+      display:none;
+    }
+    .toast.show{ display:block; }
+    .toast.ok{ border-color: rgba(45,212,191,.45); color: rgba(45,212,191,.95); }
     .toast.err{ border-color: rgba(251,113,133,.45); color: rgba(251,113,133,.95); }
     .toast.warn{ border-color: rgba(251,191,36,.45); color: rgba(251,191,36,.95); }
+
     table{ width:100%; border-collapse:collapse; font-size: 13px; }
     th, td{ border-bottom: 1px solid var(--line); padding: 10px 8px; text-align:left; vertical-align:top; }
     th{ color: var(--muted); font-weight:600; font-size: 12px; }
     tr:hover td{ background: rgba(255,255,255,.01); }
-    .mono{ font-family: var(--mono); } .rightAlign{ text-align:right; } .muted{ color: var(--muted); }
+
+    .mono{ font-family: var(--mono); }
+    .rightAlign{ text-align:right; }
+    .muted{ color: var(--muted); }
     .small{ font-size: 12px; color: var(--muted); }
+
     .kpiRow{ display:flex; gap:10px; flex-wrap:wrap; padding: 0 16px 16px; }
-    .kpi{ flex: 1 1 140px; min-width: 140px; border: 1px solid var(--line); background: rgba(255,255,255,.02);
-      border-radius: 12px; padding: 10px 12px; }
-    .kpi .k{ font-size: 11px; color: var(--muted); } .kpi .v{ font-size: 16px; font-weight: 700; margin-top: 4px; }
+    .kpi{
+      flex: 1 1 140px;
+      min-width: 140px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .kpi .k{ font-size: 11px; color: var(--muted); }
+    .kpi .v{ font-size: 16px; font-weight: 700; margin-top: 4px; }
+
+    footer{ margin-top: 14px; color: var(--muted); font-size: 12px; text-align:center; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <header>
       <div class="title">
         <h1>Budget — Transaction Entry</h1>
-        <p>Personal Budget Tracker.</p>
+        <p>Google Sheets API (OAuth) + GitHub Pages.</p>
       </div>
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
         <span class="pill" id="pillState">Not signed in</span>
         <button class="btn ghost" id="btnAuth" type="button">Sign in</button>
-        <button class="btn ghost" id="btnSignOut" type="button">Sign out</button>
+        <button class="btn bad" id="btnSignOut" type="button">Sign out</button>
       </div>
     </header>
 
@@ -120,7 +182,7 @@
         </div>
 
         <div class="kpiRow">
-          <div class="kpi"><div class="k">Queued</div><div class="v mono" id="kpiQueued">0</div></div>
+          <div class="kpi"><div class="k">Queued</div><div class="v mono" id="kpiQueued">—</div></div>
           <div class="kpi"><div class="k">Last status</div><div class="v mono" id="kpiLast">—</div></div>
           <div class="kpi"><div class="k">Recent loaded</div><div class="v mono" id="kpiRecent">—</div></div>
         </div>
@@ -161,7 +223,9 @@
               </div>
               <div class="field sm">
                 <label for="account">Account (optional)</label>
-                <select id="account" name="account"></select>
+                <select id="account" name="account">
+                  <option value="—">—</option>
+                </select>
               </div>
               <div class="field full">
                 <label for="desc">Description / Merchant</label>
@@ -186,9 +250,10 @@
             <button class="btn ghost" id="btnRefreshRecent" type="button">Refresh</button>
           </div>
         </div>
+
         <div class="bd" style="padding:0;">
           <div style="padding: 12px 16px; border-bottom: 1px solid var(--line);" class="small">
-            Shows the last <span class="mono" id="recentN">20</span> rows returned by the sheet.
+            Shows the last <span class="mono" id="recentN">20</span> rows. (UI hides Year/Month, but inserts them.)
           </div>
           <div style="overflow:auto; max-height: 560px;">
             <table>
@@ -203,7 +268,7 @@
             </table>
           </div>
           <div style="padding: 12px 16px;" class="small muted">
-            If this errors: it’s usually permissions. (Google doing Google things.)
+            Tip: if auth fails, your OAuth app is probably still in “Testing” or missing this origin in Google Cloud Console.
           </div>
         </div>
       </section>
@@ -211,29 +276,24 @@
   </div>
 
 <script>
-/** =========================
- *  YOU MUST FILL THESE 2
- *  ========================= */
+/** =========================================================
+ *  CONFIG — replace if needed
+ *  ========================================================= */
 const GOOGLE_OAUTH_CLIENT_ID = "749192975514-5q56jrs4clv8dmrmciirjm2d9ejdlpn0.apps.googleusercontent.com";
-// API key is optional but recommended (lets Google attribute quota + less weird behavior)
-const GOOGLE_API_KEY = "AIzaSyCRKqhI6gB-oYdRNcycMkVf6-xCVMLHMD0";
+const GOOGLE_API_KEY         = "AIzaSyCRKqhI6gB-oYdRNcycMkVf6-xCVMLHMD0"; // optional but recommended
 
-/** =========================
- *  Spreadsheet config
- *  ========================= */
 const SPREADSHEET_ID = "14HIgGbjyEsmoT3zA0SI10OFbyW7wlNc453ZowbXktVU";
-const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
-const TX_SHEET = "Transactions";
+const TX_SHEET   = "Transactions";
 const LISTS_SHEET = "Lists";
 const LISTS_START_ROW = 2;
 
 const RECENT_N = 20;
 
-/** =========================
- *  Local (static) categories (with separators)
- *  ========================= */
+/** =========================================================
+ *  Static category lists (separators in UI)
+ *  ========================================================= */
 const STATIC = {
-  categoriesIncome: ["Salary (Abhi)","Salary (Athira)","Bonus","Side Income","Interest/Dividends","Refunds/Other"],
+  categoriesIncome: ["Salary (Me)","Salary (Spouse)","Bonus","Side Income","Interest/Dividends","Refunds/Other"],
   categoriesExpense: [
     "Rent / Housing","Grocery","Food (Dining)","Food (Delivery)","Petrol / Fuel",
     "Transport (Cab/Bus/Train)","Bills (Electricity/Water/Gas/Internet/Phone)",
@@ -242,6 +302,8 @@ const STATIC = {
     "Savings/Investments","Miscellaneous / Buffer"
   ],
 };
+
+const SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 const $ = (id) => document.getElementById(id);
 
@@ -277,19 +339,16 @@ function fillSelect(selectEl, values){
     if (typeof v === "string"){
       opt.value = v; opt.textContent = v;
     } else {
-      opt.value = ""; opt.textContent = v.label ?? ""; opt.disabled = true;
+      opt.value = "";
+      opt.textContent = v.label ?? "";
+      opt.disabled = true;
     }
     selectEl.appendChild(opt);
   }
 }
 
 function buildCategoryList(income, expense){
-  return [
-    {label:"--- Income ---"},
-    ...income,
-    {label:"--- Expenses ---"},
-    ...expense
-  ];
+  return [{label:"--- Income ---"}, ...income, {label:"--- Expenses ---"}, ...expense];
 }
 
 function setFormEnabled(enabled){
@@ -302,9 +361,40 @@ function setFormEnabled(enabled){
   if (submitBtn) submitBtn.disabled = !enabled;
 }
 
-/** =========================
- *  OAuth (Google Identity Services) token client
- *  ========================= */
+/** =========================================================
+ *  Amount parsing: "₹98,000" -> 98000
+ *  ========================================================= */
+function parseAmount(v){
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  let s = String(v ?? "").trim();
+  if (!s) return 0;
+
+  // Keep digits, comma, dot, minus. Remove currency symbols and spaces.
+  s = s.replace(/[^\d.,-]/g, "");
+
+  // Remove thousand separators (commas)
+  if (s.includes(",") && s.includes(".")){
+    s = s.replace(/,/g, "");
+  } else if (s.includes(",") && !s.includes(".")){
+    s = s.replace(/,/g, "");
+  }
+
+  const n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
+/** =========================================================
+ *  Year/Month from ISO date (yyyy-mm-dd)
+ *  ========================================================= */
+function ymFromISODate(isoDate){
+  const d = new Date(`${isoDate}T00:00:00`);
+  if (isNaN(d.getTime())) throw new Error("Invalid date: " + isoDate);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+
+/** =========================================================
+ *  OAuth (Google Identity Services)
+ *  ========================================================= */
 let tokenClient = null;
 let accessToken = null;
 
@@ -312,13 +402,30 @@ function initAuth(){
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_OAUTH_CLIENT_ID,
     scope: "https://www.googleapis.com/auth/spreadsheets",
-    callback: (resp) => {
+    callback: async (resp) => {
       if (resp && resp.access_token) {
         accessToken = resp.access_token;
         setPill("Signed in ✓", true);
         $("kpiLast").textContent = "auth OK";
         toast("Signed in ✓", "ok");
-        setFormEnabled(true);
+
+        // ✅ REQUIREMENT #1: auto-load lists + recent right after signing in
+        try{
+          setFormEnabled(false);
+          $("kpiLast").textContent = "loading…";
+          await loadLists();
+          await loadRecent();
+          setFormEnabled(true);
+
+          // sensible defaults
+          $("person").value = $("person").options[0]?.value || $("person").value;
+          $("type").value = "Expense";
+        }catch(e){
+          console.error(e);
+          toast(e.message, "err");
+          $("kpiLast").textContent = "load FAIL";
+          setFormEnabled(false);
+        }
       } else {
         accessToken = null;
         setPill("Auth failed", false);
@@ -339,6 +446,7 @@ function signOut(){
   accessToken = null;
   setPill("Not signed in", false);
   $("kpiLast").textContent = "signed out";
+  toast("Signed out.", "ok");
   setFormEnabled(false);
 }
 
@@ -346,13 +454,13 @@ function requireAuth(){
   if (!accessToken) throw new Error("Not signed in. Click Sign in.");
 }
 
-/** =========================
+/** =========================================================
  *  Sheets API helpers
- *  ========================= */
+ *  ========================================================= */
 function sheetsUrl(path, query = {}){
   const base = `${SHEETS_API_BASE}/${encodeURIComponent(SPREADSHEET_ID)}/${path}`;
   const u = new URL(base);
-  if (GOOGLE_API_KEY && GOOGLE_API_KEY !== "AIzaSyCRKqhI6gB-oYdRNcycMkVf6-xCVMLHMD0") u.searchParams.set("key", GOOGLE_API_KEY);
+  if (GOOGLE_API_KEY) u.searchParams.set("key", GOOGLE_API_KEY);
   Object.entries(query).forEach(([k,v]) => u.searchParams.set(k, String(v)));
   return u.toString();
 }
@@ -378,15 +486,23 @@ async function sheetsFetch(path, { method="GET", query={}, body=null } = {}){
   return data;
 }
 
-/** =========================
- *  Lists & Recent
- *  ========================= */
-
-// Based on your earlier output: Lists tab seems like
-// A=Months (JAN..), B=Person, C=Type, D=PaymentMethod, E=Yes/No (ignore), F=Frequency (ignore)
+/** =========================================================
+ *  Lists (from Lists tab)
+ *  Lists tab layout you showed:
+ *  A = Months (JAN..DEC) ignore
+ *  B = Person
+ *  C = Type
+ *  D = PaymentMethod
+ *  E = Yes/No ignore
+ *  F = Frequency ignore
+ *  ========================================================= */
 function parseLists(values){
   const rows = values || [];
-  const col = (idx) => rows.map(r => (r[idx] ?? "")).map(x => String(x).trim()).filter(Boolean);
+  const col = (idx) => rows
+    .map(r => (r[idx] ?? ""))
+    .map(x => String(x).trim())
+    .filter(Boolean);
+
   const uniq = (arr) => Array.from(new Set(arr));
 
   return {
@@ -399,7 +515,10 @@ function parseLists(values){
 
 async function loadLists(){
   const range = `${LISTS_SHEET}!A${LISTS_START_ROW}:F`;
-  const out = await sheetsFetch(`values/${encodeURIComponent(range)}`);
+  const out = await sheetsFetch(`values/${encodeURIComponent(range)}`, {
+    query: { valueRenderOption: "FORMATTED_VALUE" }
+  });
+
   const lists = parseLists(out.values);
 
   if (!lists.people.length || !lists.types.length || !lists.paymentMethods.length){
@@ -415,6 +534,12 @@ async function loadLists(){
   $("kpiLast").textContent = "lists OK";
 }
 
+/** =========================================================
+ *  Recent (Transactions tab)
+ *  Your Transactions columns now:
+ *  A Date | B Year | C Month | D Person | E Type | F Category | G Amount | H Payment | I IsFixed | J Description
+ *  UI must IGNORE Year/Month but read/write them.
+ *  ========================================================= */
 function renderRecent(rows){
   const body = $("recentBody");
   if (!rows || !rows.length){
@@ -437,21 +562,23 @@ function renderRecent(rows){
 }
 
 async function loadRecent(){
-  // Read all A:J from row 2 down, slice last N
+  // Read A:J from row 2 down
   const range = `${TX_SHEET}!A2:J`;
-  const out = await sheetsFetch(`values/${encodeURIComponent(range)}`);
+  const out = await sheetsFetch(`values/${encodeURIComponent(range)}`, {
+    query: { valueRenderOption: "FORMATTED_VALUE" }
+  });
 
   const rows = (out.values || []).map(r => ({
-    date: r[0] || "",
-    person: r[1] || "",
-    type: r[2] || "",
-    category: r[3] || "",
-    description: r[4] || "",
-    amount: Number(r[5] || 0),
-    paymentMethod: r[6] || "",
-    account: r[7] || "",
-    isFixed: r[8] || "",
-    createdAt: r[9] || "",
+    date: r[0] || "",             // A Date (formatted like 1-Feb-2025)
+    // r[1] Year (ignored in UI)
+    // r[2] Month (ignored in UI)
+    person: r[3] || "",           // D Person
+    type: r[4] || "",             // E Type
+    category: r[5] || "",         // F Category
+    amount: parseAmount(r[6] || 0), // ✅ G Amount (fixes your "0" problem)
+    paymentMethod: r[7] || "",    // H Payment
+    isFixed: r[8] || "",          // I IsFixed
+    description: r[9] || "",      // J Description
   }));
 
   const recent = rows.slice(-RECENT_N).reverse();
@@ -462,20 +589,20 @@ async function loadRecent(){
   return recent;
 }
 
-/** =========================
- *  Append transaction (A:J)
- *  ========================= */
+/** =========================================================
+ *  Append transaction (must follow sheet format)
+ *  Insert: Date(yyyy-mm-dd) + Year + Month + Person + Type + Category + Amount(number) + Pay + IsFixed + Desc
+ *  ========================================================= */
 function buildPayload(){
   return {
-    date: $("date").value,
+    date: $("date").value,                 // yyyy-mm-dd
     person: $("person").value,
     type: $("type").value,
     category: $("category").value,
-    description: $("desc").value || "",
     amount: Number($("amount").value || 0),
     paymentMethod: $("payment").value,
-    account: $("account").value || "",
     isFixed: $("isFixed").value || "No",
+    description: $("desc").value || "",
   };
 }
 
@@ -486,7 +613,6 @@ function validate(p){
   if (!p.category) return "Category is required.";
   if (!p.paymentMethod) return "Payment method is required.";
   if (!Number.isFinite(p.amount) || p.amount <= 0) return "Amount must be > 0.";
-  if (p.category.startsWith("---")) return "Pick a real category (not the separator).";
   return null;
 }
 
@@ -499,17 +625,19 @@ function clearForm(){
 }
 
 async function appendTx(p){
+  const { year, month } = ymFromISODate(p.date);
+
   const row = [
-    String(p.date),
-    String(p.person),
-    String(p.type),
-    String(p.category),
-    String(p.description || ""),
-    Number(p.amount || 0),
-    String(p.paymentMethod),
-    String(p.account || ""),
-    String(p.isFixed || "No"),
-    new Date().toISOString(),
+    String(p.date),               // A Date (yyyy-mm-dd) -> sheet formats to 1-Feb-2025
+    Number(year),                 // B Year
+    Number(month),                // C Month
+    String(p.person),             // D Person
+    String(p.type),               // E Type
+    String(p.category),           // F Category
+    Number(p.amount || 0),        // G Amount (no ₹, no commas)
+    String(p.paymentMethod),      // H Payment Method
+    String(p.isFixed || "No"),    // I Is Fixed?
+    String(p.description || "")   // J Description
   ];
 
   const range = `${TX_SHEET}!A:J`;
@@ -525,9 +653,9 @@ async function appendTx(p){
   });
 }
 
-/** =========================
+/** =========================================================
  *  Boot
- *  ========================= */
+ *  ========================================================= */
 window.addEventListener("DOMContentLoaded", async () => {
   $("date").value = todayISO();
   $("recentN").textContent = String(RECENT_N);
@@ -537,9 +665,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   setPill("Not signed in", false);
   $("kpiLast").textContent = "auth required";
 
-  // Wait until Google script loads (gsi client is async/defer)
+  // Wait for GIS to load
   const waitForGsi = async () => {
-    for (let i=0; i<50; i++){
+    for (let i=0; i<70; i++){
       if (window.google?.accounts?.oauth2) return;
       await new Promise(r => setTimeout(r, 100));
     }
@@ -561,11 +689,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("btnSignOut").addEventListener("click", () => {
     signOut();
-    toast("Signed out.", "ok");
   });
 
   $("btnLoadLists").addEventListener("click", async () => {
     try{
+      $("kpiLast").textContent = "loading lists…";
       await loadLists();
       toast("Lists loaded.", "ok");
     }catch(e){
@@ -575,6 +703,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("btnRefreshRecent").addEventListener("click", async () => {
     try{
+      $("kpiLast").textContent = "loading recent…";
       await loadRecent();
       toast("Recent refreshed.", "ok");
     }catch(e){
@@ -582,12 +711,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  $("btnClear").addEventListener("click", () => { clearForm(); toast("Cleared.", "ok"); });
+  $("btnClear").addEventListener("click", () => {
+    clearForm();
+    toast("Cleared.", "ok");
+  });
 
   $("txForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const p = buildPayload();
+    let p;
+    try{
+      requireAuth();
+      p = buildPayload();
+    }catch(ex){
+      toast(ex.message, "err");
+      return;
+    }
+
     const err = validate(p);
     if (err){ toast(err, "err"); return; }
 
@@ -604,10 +744,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       toast(ex.message, "err");
     }
   });
-
-  // UX: after sign-in, auto-load lists + recent
-  // (we keep form disabled until auth completes)
-  // You can also manually click Reload lists / Refresh
 });
 </script>
 </body>
