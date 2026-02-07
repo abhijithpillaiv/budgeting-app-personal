@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Couple Budget — Transactions</title>
+  <style>
+    :root{
+      --bg:#0b0f14;
+      --panel:#111826;
+      --text:#e6edf3;
+      --muted:#9aa4b2;
+      --line:#233044;
+      --accent:#7c5cff;
+      --good:#2dd4bf;
+      --bad:#fb7185;
+      --warn:#fbbf24;
+      --shadow: 0 8px 28px rgba(0,0,0,.35);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family:var(--sans);
+      background: radial-gradient(1200px 600px at 10% 10%, rgba(124,92,255,.18), transparent 55%),
+                  radial-gradient(900px 500px at 90% 15%, rgba(45,212,191,.12), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{ max-width: 1050px; margin: 0 auto; padding: 28px 18px 60px; }
+    header{ display:flex; gap:14px; align-items:flex-end; justify-content:space-between; margin-bottom:18px; }
+    .title{ display:flex; flex-direction:column; gap:4px; }
+    .title h1{ margin:0; font-size: 20px; letter-spacing:.2px; }
+    .title p{ margin:0; color:var(--muted); font-size: 13px; }
+    .pill{
+      font-family:var(--mono);
+      font-size: 12px;
+      padding: 7px 10px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      border-radius: 999px;
+      color: var(--muted);
+    }
+    .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap: 16px; align-items:start; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } header{ align-items:flex-start; flex-direction:column; } }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{ padding: 14px 16px; background: rgba(255,255,255,.02); border-bottom: 1px solid var(--line);
+      display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .card .hd h2{ margin:0; font-size: 14px; letter-spacing:.2px; }
+    .card .hd .right{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .card .bd{ padding: 16px; }
+    .row{ display:grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
+    .field{ grid-column: span 6; } .field.sm{ grid-column: span 4; } .field.xs{ grid-column: span 3; } .field.full{ grid-column: 1 / -1; }
+    @media (max-width: 700px){ .field, .field.sm, .field.xs{ grid-column: 1 / -1; } }
+    label{ display:block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+    input, select, textarea{
+      width:100%; padding: 10px 10px; border-radius: 12px; border: 1px solid var(--line);
+      background: rgba(0,0,0,.25); color: var(--text); outline:none; transition: border-color .15s ease;
+    }
+    input:focus, select:focus, textarea:focus{ border-color: rgba(124,92,255,.65); box-shadow: 0 0 0 3px rgba(124,92,255,.15); }
+    textarea{ min-height: 90px; resize: vertical; }
+    .btn{
+      cursor:pointer; border:1px solid rgba(124,92,255,.55);
+      background: linear-gradient(180deg, rgba(124,92,255,.25), rgba(124,92,255,.12));
+      color: var(--text); padding: 10px 12px; border-radius: 12px; font-weight: 600; letter-spacing:.2px;
+    }
+    .btn.ghost{ border-color: var(--line); background: rgba(255,255,255,.02); font-weight:600; color: var(--muted); }
+    .btn.bad{ border-color: rgba(251,113,133,.55); background: linear-gradient(180deg, rgba(251,113,133,.22), rgba(251,113,133,.08)); }
+    .hint{ color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 10px; }
+    .toast{ margin-top: 12px; border:1px solid var(--line); background: rgba(255,255,255,.02); border-radius: 12px;
+      padding: 10px 12px; font-size: 13px; color: var(--muted); display:none; }
+    .toast.show{ display:block; } .toast.ok{ border-color: rgba(45,212,191,.45); color: rgba(45,212,191,.95); }
+    .toast.err{ border-color: rgba(251,113,133,.45); color: rgba(251,113,133,.95); }
+    .toast.warn{ border-color: rgba(251,191,36,.45); color: rgba(251,191,36,.95); }
+    table{ width:100%; border-collapse:collapse; font-size: 13px; }
+    th, td{ border-bottom: 1px solid var(--line); padding: 10px 8px; text-align:left; vertical-align:top; }
+    th{ color: var(--muted); font-weight:600; font-size: 12px; }
+    tr:hover td{ background: rgba(255,255,255,.01); }
+    .mono{ font-family: var(--mono); } .rightAlign{ text-align:right; } .muted{ color: var(--muted); }
+    .small{ font-size: 12px; color: var(--muted); }
+    .kpiRow{ display:flex; gap:10px; flex-wrap:wrap; padding: 0 16px 16px; }
+    .kpi{ flex: 1 1 140px; min-width: 140px; border: 1px solid var(--line); background: rgba(255,255,255,.02);
+      border-radius: 12px; padding: 10px 12px; }
+    .kpi .k{ font-size: 11px; color: var(--muted); } .kpi .v{ font-size: 16px; font-weight: 700; margin-top: 4px; }
+    footer{ margin-top: 14px; color: var(--muted); font-size: 12px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">
+        <h1>Couple Budget — Transaction Entry</h1>
+        <p>Dark theme. Dropdowns for the stuff you’d otherwise typo. Posts to Google Sheets via Apps Script.</p>
+      </div>
+      <div class="pill" id="statusPill">Not connected</div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="hd">
+          <h2>Add transaction</h2>
+          <div class="right">
+            <button class="btn ghost" id="btnLoadLists" type="button">Reload lists</button>
+            <button class="btn ghost" id="btnSyncQueue" type="button">Sync queued</button>
+          </div>
+        </div>
+
+        <div class="kpiRow">
+          <div class="kpi"><div class="k">Queued</div><div class="v mono" id="kpiQueued">0</div></div>
+          <div class="kpi"><div class="k">Last status</div><div class="v mono" id="kpiLast">—</div></div>
+          <div class="kpi"><div class="k">Recent loaded</div><div class="v mono" id="kpiRecent">—</div></div>
+        </div>
+
+        <div class="bd">
+          <form id="txForm" autocomplete="off">
+            <div class="row">
+              <div class="field xs">
+                <label for="date">Date</label>
+                <input id="date" name="date" type="date" required />
+              </div>
+              <div class="field xs">
+                <label for="person">Person</label>
+                <select id="person" name="person" required></select>
+              </div>
+              <div class="field xs">
+                <label for="type">Type</label>
+                <select id="type" name="type" required></select>
+              </div>
+              <div class="field sm">
+                <label for="category">Category</label>
+                <select id="category" name="category" required></select>
+              </div>
+              <div class="field sm">
+                <label for="subcategory">Subcategory</label>
+                <select id="subcategory" name="subcategory"></select>
+              </div>
+              <div class="field xs">
+                <label for="amount">Amount</label>
+                <input id="amount" name="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
+              </div>
+              <div class="field xs">
+                <label for="payment">Payment method</label>
+                <select id="payment" name="payment" required></select>
+              </div>
+              <div class="field xs">
+                <label for="isFixed">Is fixed?</label>
+                <select id="isFixed" name="isFixed">
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
+              </div>
+              <div class="field sm">
+                <label for="account">Account (optional)</label>
+                <select id="account" name="account"></select>
+              </div>
+              <div class="field full">
+                <label for="desc">Description / Merchant</label>
+                <input id="desc" name="desc" type="text" placeholder="e.g., Swiggy, Petrol pump, Rent, Salary…" />
+              </div>
+              <div class="field full">
+                <label for="tags">Tags (optional)</label>
+                <input id="tags" name="tags" type="text" placeholder="e.g., weekend, vacation, office" />
+              </div>
+              <div class="field full">
+                <label for="notes">Notes (optional)</label>
+                <textarea id="notes" name="notes" placeholder="Anything future-you will appreciate reading. Or ignore. Future-you probably deserves it though."></textarea>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 12px;">
+              <button class="btn" type="submit">Add to sheet</button>
+              <button class="btn ghost" id="btnClear" type="button">Clear</button>
+              <button class="btn bad" id="btnQueueOnly" type="button">Queue (offline)</button>
+            </div>
+
+            <div class="hint">
+              <div><span class="mono">TIP:</span> If your browser blocks the request (CORS), the transaction will be queued locally. Hit “Sync queued” later.</div>
+              <div class="small">Wire this page to your sheet using a tiny Google Apps Script web app (README).</div>
+            </div>
+
+            <div class="toast" id="toast"></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="hd">
+          <h2>Recent transactions</h2>
+          <div class="right">
+            <button class="btn ghost" id="btnRefreshRecent" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="bd" style="padding:0;">
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--line);" class="small">
+            Shows the last <span class="mono" id="recentN">20</span> rows returned by the script endpoint.
+          </div>
+          <div style="overflow:auto; max-height: 560px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Person</th><th>Type</th><th>Category</th><th class="rightAlign">Amount</th><th>Pay</th>
+                </tr>
+              </thead>
+              <tbody id="recentBody">
+                <tr><td colspan="6" class="muted">No data yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="padding: 12px 16px;" class="small muted">
+            Want edit/delete? Tell me — we’ll add “Edit recent row” mode.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      Hosted on GitHub Pages. Writes to Google Sheets via Apps Script. Yes, it’s intentionally simple.
+    </footer>
+  </div>
+
+<script>
+const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+let API_TOKEN = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
+const RECENT_N = 20;
+const QUEUE_KEY = "cbp_tx_queue_v1";
+
+const FALLBACK_LISTS = {
+  people: ["Me","Spouse","Shared"],
+  types: ["Expense","Income","Transfer"],
+  paymentMethods: ["Cash","Card","UPI","Bank Transfer","Wallet"],
+  categories: [
+    "Salary","Bonus","Side income","Interest/Dividends","Refunds/Other",
+    "Rent / Housing","Grocery","Food (Dining)","Food (Delivery)","Petrol / Fuel","Transport",
+    "Bills (Electricity/Water/Gas/Internet/Phone)","Hospital / Medical","Insurance",
+    "EMI / Loans","Entertainment","Shopping","Subscriptions","Cigarettes / Drinks","Personal Care",
+    "Gifts/Donations","Travel","Education","Kids/Family","Miscellaneous / Buffer"
+  ],
+  subcategories: [],
+  accounts: ["—"]
+};
+
+const $ = (id) => document.getElementById(id);
+
+function setPill(text, ok=false){
+  const el = $("statusPill");
+  el.textContent = text;
+  el.style.borderColor = ok ? "rgba(45,212,191,.55)" : "var(--line)";
+  el.style.color = ok ? "rgba(45,212,191,.95)" : "var(--muted)";
+}
+
+function toast(msg, kind=""){
+  const el = $("toast");
+  el.className = "toast show" + (kind ? " " + kind : "");
+  el.textContent = msg;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{ el.className = "toast"; }, 5000);
+}
+
+function getQueue(){ try{ return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }catch{ return []; } }
+function setQueue(arr){ localStorage.setItem(QUEUE_KEY, JSON.stringify(arr)); $("kpiQueued").textContent = String(arr.length); }
+function queueTx(payload){ const q = getQueue(); q.push(payload); setQueue(q); }
+
+function clearForm(){
+  $("amount").value = "";
+  $("desc").value = "";
+  $("tags").value = "";
+  $("notes").value = "";
+  $("isFixed").value = "No";
+  $("type").value = "Expense";
+}
+
+function todayISO(){
+  const d = new Date();
+  const pad = (n)=> String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function fillSelect(selectEl, values){
+  selectEl.innerHTML = "";
+  for (const v of values){
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    selectEl.appendChild(opt);
+  }
+}
+
+async function loadLists(){
+  if (!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE")){
+    applyLists(FALLBACK_LISTS);
+    setPill("Not connected (fallback lists)");
+    return;
+  }
+  try{
+    const res = await fetch(`${SCRIPT_URL}?action=lists&t=${Date.now()}`);
+    const data = await res.json();
+    applyLists(data);
+    setPill("Connected ✓", true);
+    $("kpiLast").textContent = "lists OK";
+  }catch(err){
+    console.warn(err);
+    applyLists(FALLBACK_LISTS);
+    setPill("Endpoint blocked/offline (fallback)");
+    $("kpiLast").textContent = "lists fail";
+    toast("Couldn’t load dropdown lists from the sheet. Using fallbacks.", "warn");
+  }
+}
+
+function applyLists(lists){
+  fillSelect($("person"), (lists.people?.length ? lists.people : FALLBACK_LISTS.people));
+  fillSelect($("type"), (lists.types?.length ? lists.types : FALLBACK_LISTS.types));
+  fillSelect($("payment"), (lists.paymentMethods?.length ? lists.paymentMethods : FALLBACK_LISTS.paymentMethods));
+  fillSelect($("category"), (lists.categories?.length ? lists.categories : FALLBACK_LISTS.categories));
+  fillSelect($("subcategory"), (lists.subcategories?.length ? lists.subcategories : ["—"]));
+  fillSelect($("account"), (lists.accounts?.length ? lists.accounts : ["—"]));
+}
+
+function buildPayload(){
+  return {
+    date: $("date").value,
+    person: $("person").value,
+    type: $("type").value,
+    category: $("category").value,
+    subcategory: $("subcategory").value || "",
+    description: $("desc").value || "",
+    amount: Number($("amount").value || 0),
+    paymentMethod: $("payment").value,
+    account: $("account").value || "",
+    isFixed: $("isFixed").value || "No",
+    tags: $("tags").value || "",
+    notes: $("notes").value || "",
+    token: API_TOKEN || ""
+  };
+}
+
+function validate(p){
+  if (!p.date) return "Date is required.";
+  if (!p.person) return "Person is required.";
+  if (!p.type) return "Type is required.";
+  if (!p.category) return "Category is required.";
+  if (!p.paymentMethod) return "Payment method is required.";
+  if (!Number.isFinite(p.amount) || p.amount <= 0) return "Amount must be a number > 0.";
+  return null;
+}
+
+async function postTx(payload){
+  const res = await fetch(SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return await res.json();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
+}
+
+function renderRecent(rows){
+  const body = $("recentBody");
+  if (!rows || !rows.length){
+    body.innerHTML = `<tr><td colspan="6" class="muted">No data returned.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const amt = (typeof r.amount === "number" ? r.amount : Number(r.amount || 0));
+    return `
+      <tr>
+        <td class="mono">${escapeHtml(r.date || "")}</td>
+        <td>${escapeHtml(r.person || "")}</td>
+        <td>${escapeHtml(r.type || "")}</td>
+        <td>${escapeHtml(r.category || "")}</td>
+        <td class="rightAlign mono">${amt.toFixed(2)}</td>
+        <td>${escapeHtml(r.paymentMethod || "")}</td>
+      </tr>`;
+  }).join("");
+}
+
+async function loadRecent(){
+  if (!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE")){
+    $("kpiRecent").textContent = "—";
+    return;
+  }
+  try{
+    const res = await fetch(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
+    const data = await res.json();
+    renderRecent(data.rows || []);
+    $("kpiRecent").textContent = String((data.rows || []).length);
+    $("kpiLast").textContent = "recent OK";
+  }catch(err){
+    console.warn(err);
+    $("kpiLast").textContent = "recent fail";
+    toast("Couldn’t load recent transactions (likely blocked/offline).", "warn");
+  }
+}
+
+async function syncQueue(){
+  if (!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE")){
+    toast("Set SCRIPT_URL first (README).", "warn");
+    return;
+  }
+  const q = getQueue();
+  if (!q.length){ toast("No queued transactions.", "ok"); return; }
+
+  let ok = 0, fail = 0;
+  while (q.length){
+    const payload = q[0];
+    try{
+      const out = await postTx(payload);
+      if (out && out.ok){
+        ok++;
+        q.shift();
+        setQueue(q);
+      }else{
+        fail++; break;
+      }
+    }catch(e){
+      fail++; break;
+    }
+  }
+  if (ok) toast(`Synced ${ok} queued transaction(s).`, "ok");
+  if (fail) toast(`Couldn’t sync the rest. Left queued.`, "warn");
+  $("kpiLast").textContent = `sync ok:${ok} fail:${fail}`;
+  await loadRecent();
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+  $("date").value = todayISO();
+  setQueue(getQueue());
+  $("recentN").textContent = String(RECENT_N);
+
+  await loadLists();
+  await loadRecent();
+
+  $("btnLoadLists").addEventListener("click", loadLists);
+  $("btnRefreshRecent").addEventListener("click", loadRecent);
+  $("btnSyncQueue").addEventListener("click", syncQueue);
+
+  $("btnClear").addEventListener("click", () => { clearForm(); toast("Cleared.", "ok"); });
+  $("btnQueueOnly").addEventListener("click", () => {
+    const p = buildPayload();
+    const err = validate(p);
+    if (err){ toast(err, "err"); return; }
+    queueTx(p);
+    toast("Queued locally.", "warn");
+    $("kpiLast").textContent = "queued";
+    clearForm();
+  });
+
+  $("txForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const p = buildPayload();
+    const err = validate(p);
+    if (err){ toast(err, "err"); return; }
+
+    if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
+      queueTx(p);
+      toast("SCRIPT_URL not set. Queued locally instead.", "warn");
+      $("kpiLast").textContent = "queued";
+      clearForm();
+      return;
+    }
+
+    try{
+      const out = await postTx(p);
+      if (out && out.ok){
+        toast("Added to sheet ✓", "ok");
+        $("kpiLast").textContent = `ok row:${out.row || "?"}`;
+        clearForm();
+        await loadRecent();
+      }else{
+        queueTx(p);
+        toast(`Rejected (${out?.error || "unknown"}). Queued locally.`, "warn");
+        $("kpiLast").textContent = "queued";
+      }
+    }catch(ex){
+      console.warn(ex);
+      queueTx(p);
+      toast("Network/CORS blocked. Queued locally. Sync later.", "warn");
+      $("kpiLast").textContent = "queued";
+    }
+  });
+});
+</script>
+</body>
+</html>
