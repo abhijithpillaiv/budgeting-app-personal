@@ -204,7 +204,7 @@
   </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzw9YPxaz5XajF_463IehRCehrGASKSb54FvUmszaGc0slBe5Vi4tZqAXT6BNAknYk/exec?authuser=0";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzw9YPxaz5XajF_463IehRCehrGASKSb54FvUmszaGc0slBe5Vi4tZqAXT6BNAknYk/exec?authuser=1";
 const API_TOKEN  = "dajZeKVE9SzRZFfJmVIGBSropZlift";
 const RECENT_N   = 20;
 
@@ -328,7 +328,7 @@ function renderRecent(rows){
 
 async function loadLists(){
   try{
-    const data = await jsonp(`${SCRIPT_URL}&action=lists&t=${Date.now()}`);
+    const data = await jsonp(`${SCRIPT_URL}&action=lists`);
     applyLists(data || {});
     $("kpiLast").textContent = "lists OK";
   }catch(err){
