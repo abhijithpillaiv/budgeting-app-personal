@@ -202,17 +202,13 @@
       </section>
     </div>
   </div>
-
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzw9YPxaz5XajF_463IehRCehrGASKSb54FvUmszaGc0slBe5Vi4tZqAXT6BNAknYk/exec";
 const API_TOKEN  = "dajZeKVE9SzRZFfJmVIGBSropZlift";
 const RECENT_N   = 20;
 
-const LISTS_FALLBACK = {
-  people: ["Abhi","Athira","Shared"],
-  types: ["Expense","Income","Transfer"],
-  paymentMethods: ["Cash","Card","UPI","Bank Transfer","Wallet"],
-  // we will add separators in UI
+// --- UI lists we keep local (only categories need separators) ---
+const STATIC = {
   categoriesIncome: ["Salary (Me)","Salary (Spouse)","Bonus","Side Income","Interest/Dividends","Refunds/Other"],
   categoriesExpense: [
     "Rent / Housing","Grocery","Food (Dining)","Food (Delivery)","Petrol / Fuel",
@@ -221,7 +217,6 @@ const LISTS_FALLBACK = {
     "Cigarettes / Drinks","Personal Care","Gifts/Donations","Travel","Education","Kids/Family",
     "Savings/Investments","Miscellaneous / Buffer"
   ],
-  accounts: ["—"]
 };
 
 const $ = (id) => document.getElementById(id);
@@ -266,11 +261,30 @@ function buildCategoryList(income, expense){
   ];
 }
 
-// JSONP helper (CORS-proof for GET)
+function setFormEnabled(enabled){
+  const ids = ["date","person","type","category","amount","payment","isFixed","account","desc"];
+  for (const id of ids){
+    const el = $(id);
+    if (el) el.disabled = !enabled;
+  }
+  const submitBtn = document.querySelector('#txForm button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = !enabled;
+}
+
+// ---------- URL builder that preserves existing query params (important for googleusercontent) ----------
+function buildUrl(base, params = {}) {
+  const u = new URL(base);
+  Object.entries(params).forEach(([k,v]) => u.searchParams.set(k, String(v)));
+  return u.toString();
+}
+
+// ---------- JSONP (GET only) ----------
 function jsonp(url){
   return new Promise((resolve, reject) => {
     const cb = `cb_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const sep = url.includes("?") ? "&" : "?";
+    const u = new URL(url);
+    u.searchParams.set("callback", cb);
+
     const script = document.createElement("script");
 
     window[cb] = (data) => {
@@ -283,26 +297,82 @@ function jsonp(url){
       script.remove();
     }
 
-    script.src = `${url}${sep}callback=${cb}`;
+    script.src = u.toString();
     script.onerror = () => {
       cleanup();
-      reject(new Error("JSONP failed: endpoint not public / wrong deployment / blocked"));
+      reject(new Error("JSONP failed (blocked / redirect / wrong deployment)."));
     };
 
     document.head.appendChild(script);
   });
 }
 
+// ---------- “/u/1” bypass: resolve to googleusercontent once ----------
+let BASE_URL = SCRIPT_URL;
+let triedResolve = false;
+
+async function resolveBaseUrlIfNeeded(){
+  if (triedResolve) return;
+  triedResolve = true;
+
+  try{
+    // no-cors means we cannot read body, but we *can* often read response.url after redirects
+    const res = await fetch(buildUrl(SCRIPT_URL, { action: "ping", t: Date.now() }), {
+      method: "GET",
+      mode: "no-cors",
+      redirect: "follow",
+    });
+
+    // In many browsers, this becomes the final redirected googleusercontent URL
+    if (res && res.url && res.url.includes("script.googleusercontent.com")) {
+      BASE_URL = res.url; // keep full URL (it contains required keys)
+      $("kpiLast").textContent = "Resolved public endpoint ✓";
+    }
+  }catch{
+    // ignore: we'll keep SCRIPT_URL and let JSONP show the error
+  }
+}
+
+// ---------- API wrappers ----------
+async function apiGet(action, params = {}) {
+  await resolveBaseUrlIfNeeded();
+
+  // Try once; if fails and we didn't resolve, try resolve then retry
+  try{
+    return await jsonp(buildUrl(BASE_URL, { action, t: Date.now(), ...params }));
+  }catch(err){
+    // One more attempt using resolved base (in case resolve succeeded after first try)
+    await resolveBaseUrlIfNeeded();
+    return await jsonp(buildUrl(BASE_URL, { action, t: Date.now(), ...params }));
+  }
+}
+
+// POST without CORS (we can’t read response; verify via recent)
+async function apiPostNoCors(payload){
+  await resolveBaseUrlIfNeeded();
+  await fetch(BASE_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ---------- UI logic ----------
 function applyLists(lists){
-  fillSelect($("person"), lists.people?.length ? lists.people : LISTS_FALLBACK.people);
-  fillSelect($("type"), lists.types?.length ? lists.types : LISTS_FALLBACK.types);
-  fillSelect($("payment"), lists.paymentMethods?.length ? lists.paymentMethods : LISTS_FALLBACK.paymentMethods);
+  // no fallback: if these are missing, treat as error
+  if (!lists || !lists.people?.length || !lists.types?.length || !lists.paymentMethods?.length) {
+    throw new Error("Lists response missing required fields (people/types/paymentMethods).");
+  }
 
-  const income = LISTS_FALLBACK.categoriesIncome;
-  const expense = LISTS_FALLBACK.categoriesExpense;
-  fillSelect($("category"), buildCategoryList(income, expense));
+  fillSelect($("person"), lists.people);
+  fillSelect($("type"), lists.types);
+  fillSelect($("payment"), lists.paymentMethods);
 
-  fillSelect($("account"), lists.accounts?.length ? lists.accounts : LISTS_FALLBACK.accounts);
+  // categories with separators (local)
+  fillSelect($("category"), buildCategoryList(STATIC.categoriesIncome, STATIC.categoriesExpense));
+
+  fillSelect($("account"), lists.accounts?.length ? lists.accounts : ["—"]);
 }
 
 function renderRecent(rows){
@@ -327,20 +397,13 @@ function renderRecent(rows){
 }
 
 async function loadLists(){
-  try{
-    const data = await jsonp(`${SCRIPT_URL}?action=lists`);
-    applyLists(data || {});
-    $("kpiLast").textContent = "lists OK";
-  }catch(err){
-    console.error(err);
-    applyLists({});
-    $("kpiLast").textContent = "lists fallback";
-    toast(err.message, "warn");
-  }
+  const data = await apiGet("lists");
+  applyLists(data);
+  $("kpiLast").textContent = "lists OK";
 }
 
 async function loadRecent(){
-  const data = await jsonp(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
+  const data = await apiGet("recent", { n: RECENT_N });
   renderRecent(data.rows || []);
   $("kpiRecent").textContent = String((data.rows || []).length);
   $("kpiLast").textContent = "recent OK";
@@ -373,16 +436,6 @@ function validate(p){
   return null;
 }
 
-// POST without CORS (we can’t read response, but it *sends*)
-async function postTxNoCors(payload){
-  await fetch(SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
-  });
-}
-
 function clearForm(){
   $("amount").value = "";
   $("desc").value = "";
@@ -395,40 +448,62 @@ function approxEq(a,b){ return Math.abs(Number(a)-Number(b)) < 0.01; }
 
 window.addEventListener("DOMContentLoaded", async () => {
   $("date").value = todayISO();
-  $("kpiQueued").textContent = "—"; // no local queue
   $("recentN").textContent = String(RECENT_N);
+  $("kpiQueued").textContent = "—"; // no queue
 
-  await loadLists();
+  setFormEnabled(false);
+  $("kpiLast").textContent = "connecting…";
 
-  $("person").value = "Abhi";
-  $("type").value = "Expense";
+  try{
+    await loadLists();
+    setFormEnabled(true);
 
-  try{ await loadRecent(); }
-  catch(e){ toast(e.message, "err"); }
+    // defaults
+    $("person").value = "Abhi";
+    $("type").value = "Expense";
+
+    await loadRecent();
+  }catch(e){
+    console.error(e);
+    $("kpiLast").textContent = "connect FAIL";
+    toast(e.message, "err");
+    setFormEnabled(false);
+    return;
+  }
 
   $("btnLoadLists").addEventListener("click", async () => {
-    await loadLists();
-    toast("Lists reloaded.", "ok");
+    try{
+      setFormEnabled(false);
+      await loadLists();
+      setFormEnabled(true);
+      toast("Lists reloaded.", "ok");
+    }catch(e){
+      toast(e.message, "err");
+      setFormEnabled(false);
+    }
   });
 
   $("btnRefreshRecent").addEventListener("click", async () => {
-    try{ await loadRecent(); toast("Recent refreshed.", "ok"); }
-    catch(e){ toast(e.message, "err"); }
+    try{
+      await loadRecent();
+      toast("Recent refreshed.", "ok");
+    }catch(e){
+      toast(e.message, "err");
+    }
   });
 
   $("btnClear").addEventListener("click", () => { clearForm(); toast("Cleared.", "ok"); });
 
   $("txForm").addEventListener("submit", async (e) => {
-    e.preventDefault(); // <- stops the refresh, permanently
+    e.preventDefault();
 
     const p = buildPayload();
     const err = validate(p);
     if (err){ toast(err, "err"); return; }
 
     $("kpiLast").textContent = "sending…";
-    toast("Sending…", "warn");
 
-    // snapshot current recent top row to detect change
+    // snapshot top row for verification
     let beforeTop = null;
     try{
       const before = await loadRecent();
@@ -436,16 +511,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     }catch{ /* ignore */ }
 
     try{
-      await postTxNoCors(p);
+      await apiPostNoCors(p);
     }catch(ex){
       console.error(ex);
       $("kpiLast").textContent = "send FAIL";
-      toast("POST failed (browser blocked it).", "err");
+      toast("POST blocked by browser/network.", "err");
       return;
     }
 
-    // verify by reloading recent via JSONP
+    // verify via recent
     await new Promise(r => setTimeout(r, 900));
+
     let after = [];
     try{
       after = await loadRecent();
@@ -472,13 +548,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       clearForm();
     }else{
       $("kpiLast").textContent = "not saved?";
-      toast("Sent, but it didn’t show up in Recent. Likely token/deploy issue.", "err");
+      toast("Sent, but it didn’t show up in Recent. (Token/deploy/permissions)", "err");
     }
   });
 });
 </script>
-
-
-
 </body>
 </html>
