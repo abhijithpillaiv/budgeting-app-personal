@@ -199,7 +199,7 @@
   </div>
 
 <script>
-const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec";
 let API_TOKEN = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
 const RECENT_N = 20;
 const QUEUE_KEY = "cbp_tx_queue_v1";
@@ -266,7 +266,7 @@ function fillSelect(selectEl, values){
 }
 
 async function loadLists(){
-  if (!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE")){
+  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
     applyLists(FALLBACK_LISTS);
     setPill("Not connected (fallback lists)");
     return;
@@ -357,7 +357,7 @@ function renderRecent(rows){
 }
 
 async function loadRecent(){
-  if (!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE")){
+  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
     $("kpiRecent").textContent = "—";
     return;
   }
@@ -375,7 +375,7 @@ async function loadRecent(){
 }
 
 async function syncQueue(){
-  if (!SCRIPT_URL || SCRIPT_URL.includes("PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE")){
+  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
     toast("Set SCRIPT_URL first (README).", "warn");
     return;
   }
