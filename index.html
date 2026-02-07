@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Couple Budget — Transactions</title>
+  <title>Budget — Transactions</title>
   <style>
     :root{
       --bg:#0b0f14;
@@ -98,10 +98,9 @@
   <div class="wrap">
     <header>
       <div class="title">
-        <h1>Couple Budget — Transaction Entry</h1>
-        <p>Dark theme. Dropdowns for the stuff you’d otherwise typo. Posts to Google Sheets via Apps Script.</p>
+        <h1>Budget — Transaction Entry</h1>
+        <p>Personal Budget Tracker.</p>
       </div>
-      <div class="pill" id="statusPill">Not connected</div>
     </header>
 
     <div class="grid">
@@ -110,7 +109,6 @@
           <h2>Add transaction</h2>
           <div class="right">
             <button class="btn ghost" id="btnLoadLists" type="button">Reload lists</button>
-            <button class="btn ghost" id="btnSyncQueue" type="button">Sync queued</button>
           </div>
         </div>
 
@@ -139,10 +137,6 @@
                 <label for="category">Category</label>
                 <select id="category" name="category" required></select>
               </div>
-              <div class="field sm">
-                <label for="subcategory">Subcategory</label>
-                <select id="subcategory" name="subcategory"></select>
-              </div>
               <div class="field xs">
                 <label for="amount">Amount</label>
                 <input id="amount" name="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
@@ -166,25 +160,11 @@
                 <label for="desc">Description / Merchant</label>
                 <input id="desc" name="desc" type="text" placeholder="e.g., Swiggy, Petrol pump, Rent, Salary…" />
               </div>
-              <div class="field full">
-                <label for="tags">Tags (optional)</label>
-                <input id="tags" name="tags" type="text" placeholder="e.g., weekend, vacation, office" />
-              </div>
-              <div class="field full">
-                <label for="notes">Notes (optional)</label>
-                <textarea id="notes" name="notes" placeholder="Anything future-you will appreciate reading. Or ignore. Future-you probably deserves it though."></textarea>
-              </div>
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 12px;">
               <button class="btn" type="submit">Add to sheet</button>
               <button class="btn ghost" id="btnClear" type="button">Clear</button>
-              <button class="btn bad" id="btnQueueOnly" type="button">Queue (offline)</button>
-            </div>
-
-            <div class="hint">
-              <div><span class="mono">TIP:</span> If your browser blocks the request (CORS), the transaction will be queued locally. Hit “Sync queued” later.</div>
-              <div class="small">Wire this page to your sheet using a tiny Google Apps Script web app (README).</div>
             </div>
 
             <div class="toast" id="toast"></div>
@@ -221,30 +201,50 @@
         </div>
       </section>
     </div>
-
-    <footer>
-      Hosted on GitHub Pages. Writes to Google Sheets via Apps Script. Yes, it’s intentionally simple.
-    </footer>
   </div>
 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec";
-let API_TOKEN = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
+const API_TOKEN = "CSXGpjEyk4XAzo40swTD8tov7Sc17M";
+
 const RECENT_N = 20;
-const QUEUE_KEY = "cbp_tx_queue_v1";
 
 const FALLBACK_LISTS = {
-  people: ["Me","Spouse","Shared"],
+  people: ["abhi","athira","Shared"],
   types: ["Expense","Income","Transfer"],
   paymentMethods: ["Cash","Card","UPI","Bank Transfer","Wallet"],
   categories: [
-    "Salary","Bonus","Side income","Interest/Dividends","Refunds/Other",
-    "Rent / Housing","Grocery","Food (Dining)","Food (Delivery)","Petrol / Fuel","Transport",
-    "Bills (Electricity/Water/Gas/Internet/Phone)","Hospital / Medical","Insurance",
-    "EMI / Loans","Entertainment","Shopping","Subscriptions","Cigarettes / Drinks","Personal Care",
-    "Gifts/Donations","Travel","Education","Kids/Family","Miscellaneous / Buffer"
+    { label: "--- Income ---", disabled: true },
+    "Salary (Me)",
+    "Salary (Spouse)",
+    "Bonus",
+    "Side Income",
+    "Interest/Dividends",
+    "Refunds/Other",
+    { label: "--- Expenses ---", disabled: true },
+    "Rent / Housing",
+    "Grocery",
+    "Food (Dining)",
+    "Food (Delivery)",
+    "Petrol / Fuel",
+    "Transport (Cab/Bus/Train)",
+    "Bills (Electricity/Water/Gas/Internet/Phone)",
+    "Hospital / Medical",
+    "Insurance",
+    "EMI / Loans",
+    "Entertainment",
+    "Shopping",
+    "Subscriptions",
+    "Cigarettes / Drinks",
+    "Personal Care",
+    "Gifts/Donations",
+    "Travel",
+    "Education",
+    "Kids/Family",
+    "Savings/Investments",
+    "Miscellaneous / Buffer"
   ],
-  subcategories: [],
+  subcategories: ["—"],
   accounts: ["—"]
 };
 
@@ -262,20 +262,7 @@ function toast(msg, kind=""){
   el.className = "toast show" + (kind ? " " + kind : "");
   el.textContent = msg;
   clearTimeout(toast._t);
-  toast._t = setTimeout(()=>{ el.className = "toast"; }, 5000);
-}
-
-function getQueue(){ try{ return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }catch{ return []; } }
-function setQueue(arr){ localStorage.setItem(QUEUE_KEY, JSON.stringify(arr)); $("kpiQueued").textContent = String(arr.length); }
-function queueTx(payload){ const q = getQueue(); q.push(payload); setQueue(q); }
-
-function clearForm(){
-  $("amount").value = "";
-  $("desc").value = "";
-  $("tags").value = "";
-  $("notes").value = "";
-  $("isFixed").value = "No";
-  $("type").value = "Expense";
+  toast._t = setTimeout(()=>{ el.className = "toast"; }, 6000);
 }
 
 function todayISO(){
@@ -284,34 +271,23 @@ function todayISO(){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
+/** Supports:
+ *  - string values
+ *  - {label:"--- Income ---", disabled:true} separator
+ */
 function fillSelect(selectEl, values){
   selectEl.innerHTML = "";
   for (const v of values){
     const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
+    if (typeof v === "string"){
+      opt.value = v;
+      opt.textContent = v;
+    } else {
+      opt.value = "";
+      opt.textContent = v.label ?? "";
+      opt.disabled = !!v.disabled;
+    }
     selectEl.appendChild(opt);
-  }
-}
-
-async function loadLists(){
-  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
-    applyLists(FALLBACK_LISTS);
-    setPill("Not connected (fallback lists)");
-    return;
-  }
-  try{
-    const res = await fetch(`${SCRIPT_URL}?action=lists&t=${Date.now()}`);
-    const data = await res.json();
-    applyLists(data);
-    setPill("Connected ✓", true);
-    $("kpiLast").textContent = "lists OK";
-  }catch(err){
-    console.warn(err);
-    applyLists(FALLBACK_LISTS);
-    setPill("Endpoint blocked/offline (fallback)");
-    $("kpiLast").textContent = "lists fail";
-    toast("Couldn’t load dropdown lists from the sheet. Using fallbacks.", "warn");
   }
 }
 
@@ -319,9 +295,78 @@ function applyLists(lists){
   fillSelect($("person"), (lists.people?.length ? lists.people : FALLBACK_LISTS.people));
   fillSelect($("type"), (lists.types?.length ? lists.types : FALLBACK_LISTS.types));
   fillSelect($("payment"), (lists.paymentMethods?.length ? lists.paymentMethods : FALLBACK_LISTS.paymentMethods));
-  fillSelect($("category"), (lists.categories?.length ? lists.categories : FALLBACK_LISTS.categories));
-  fillSelect($("subcategory"), (lists.subcategories?.length ? lists.subcategories : ["—"]));
-  fillSelect($("account"), (lists.accounts?.length ? lists.accounts : ["—"]));
+
+  // categories: allow separators
+  const cats = (lists.categories?.length ? lists.categories : FALLBACK_LISTS.categories);
+  fillSelect($("category"), cats);
+
+  fillSelect($("subcategory"), (lists.subcategories?.length ? lists.subcategories : FALLBACK_LISTS.subcategories));
+  fillSelect($("account"), (lists.accounts?.length ? lists.accounts : FALLBACK_LISTS.accounts));
+}
+
+async function fetchJsonOrThrow(url, options){
+  const res = await fetch(url, options);
+  // If Apps Script returns HTML (login page / error), this will fail JSON parsing
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Non-JSON response (${res.status}). Probably auth/redirect/CORS. Response starts with: ${text.slice(0, 80)}...`);
+  }
+}
+
+async function loadLists(){
+  // No fallback-switch logic anymore; we always try real endpoint, and only fallback on error.
+  try{
+    const data = await fetchJsonOrThrow(`${SCRIPT_URL}?action=lists&t=${Date.now()}`);
+    applyLists(data);
+    setPill("Connected ✓", true);
+    $("kpiLast").textContent = "lists OK";
+  }catch(err){
+    console.error(err);
+    applyLists(FALLBACK_LISTS);
+    setPill("Lists fallback (endpoint failed)");
+    $("kpiLast").textContent = "lists FAIL";
+    toast(`Lists load failed: ${err.message}`, "err");
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
+}
+
+function renderRecent(rows){
+  const body = $("recentBody");
+  if (!rows || !rows.length){
+    body.innerHTML = `<tr><td colspan="6" class="muted">No data returned.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const amt = Number(r.amount || 0);
+    return `
+      <tr>
+        <td class="mono">${escapeHtml(r.date || "")}</td>
+        <td>${escapeHtml(r.person || "")}</td>
+        <td>${escapeHtml(r.type || "")}</td>
+        <td>${escapeHtml(r.category || "")}</td>
+        <td class="rightAlign mono">${isFinite(amt) ? amt.toFixed(2) : "0.00"}</td>
+        <td>${escapeHtml(r.paymentMethod || "")}</td>
+      </tr>`;
+  }).join("");
+}
+
+async function loadRecent(){
+  try{
+    const data = await fetchJsonOrThrow(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
+    renderRecent(data.rows || []);
+    $("kpiRecent").textContent = String((data.rows || []).length);
+    $("kpiLast").textContent = "recent OK";
+  }catch(err){
+    console.error(err);
+    $("kpiLast").textContent = "recent FAIL";
+    toast(`Recent load failed: ${err.message}`, "err");
+    // no local fallback here — user asked to throw errors
+  }
 }
 
 function buildPayload(){
@@ -353,122 +398,60 @@ function validate(p){
 }
 
 async function postTx(payload){
-  const res = await fetch(SCRIPT_URL, {
+  return await fetchJsonOrThrow(SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload)
   });
-  return await res.json();
 }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
-}
-
-function renderRecent(rows){
-  const body = $("recentBody");
-  if (!rows || !rows.length){
-    body.innerHTML = `<tr><td colspan="6" class="muted">No data returned.</td></tr>`;
-    return;
-  }
-  body.innerHTML = rows.map(r => {
-    const amt = (typeof r.amount === "number" ? r.amount : Number(r.amount || 0));
-    return `
-      <tr>
-        <td class="mono">${escapeHtml(r.date || "")}</td>
-        <td>${escapeHtml(r.person || "")}</td>
-        <td>${escapeHtml(r.type || "")}</td>
-        <td>${escapeHtml(r.category || "")}</td>
-        <td class="rightAlign mono">${amt.toFixed(2)}</td>
-        <td>${escapeHtml(r.paymentMethod || "")}</td>
-      </tr>`;
-  }).join("");
-}
-
-async function loadRecent(){
-  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
-    $("kpiRecent").textContent = "—";
-    return;
-  }
-  try{
-    const res = await fetch(`${SCRIPT_URL}?action=recent&n=${RECENT_N}&t=${Date.now()}`);
-    const data = await res.json();
-    renderRecent(data.rows || []);
-    $("kpiRecent").textContent = String((data.rows || []).length);
-    $("kpiLast").textContent = "recent OK";
-  }catch(err){
-    console.warn(err);
-    $("kpiLast").textContent = "recent fail";
-    toast("Couldn’t load recent transactions (likely blocked/offline).", "warn");
-  }
-}
-
-async function syncQueue(){
-  if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
-    toast("Set SCRIPT_URL first (README).", "warn");
-    return;
-  }
-  const q = getQueue();
-  if (!q.length){ toast("No queued transactions.", "ok"); return; }
-
-  let ok = 0, fail = 0;
-  while (q.length){
-    const payload = q[0];
-    try{
-      const out = await postTx(payload);
-      if (out && out.ok){
-        ok++;
-        q.shift();
-        setQueue(q);
-      }else{
-        fail++; break;
-      }
-    }catch(e){
-      fail++; break;
-    }
-  }
-  if (ok) toast(`Synced ${ok} queued transaction(s).`, "ok");
-  if (fail) toast(`Couldn’t sync the rest. Left queued.`, "warn");
-  $("kpiLast").textContent = `sync ok:${ok} fail:${fail}`;
-  await loadRecent();
+function clearForm(){
+  $("amount").value = "";
+  $("desc").value = "";
+  $("tags").value = "";
+  $("notes").value = "";
+  $("isFixed").value = "No";
+  // keep defaults:
+  $("type").value = "Expense";
+  $("date").value = todayISO();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  // Update 4: auto date = today
   $("date").value = todayISO();
-  setQueue(getQueue());
-  $("recentN").textContent = String(RECENT_N);
 
+  // Load dropdowns
   await loadLists();
+
+  // Update 2: default person to abhi if present
+  $("person").value = "abhi";
+
+  // Update 5: type default = Expense
+  $("type").value = "Expense";
+
+  // Load recent
+  $("recentN").textContent = String(RECENT_N);
   await loadRecent();
 
   $("btnLoadLists").addEventListener("click", loadLists);
   $("btnRefreshRecent").addEventListener("click", loadRecent);
-  $("btnSyncQueue").addEventListener("click", syncQueue);
 
-  $("btnClear").addEventListener("click", () => { clearForm(); toast("Cleared.", "ok"); });
-  $("btnQueueOnly").addEventListener("click", () => {
-    const p = buildPayload();
-    const err = validate(p);
-    if (err){ toast(err, "err"); return; }
-    queueTx(p);
-    toast("Queued locally.", "warn");
-    $("kpiLast").textContent = "queued";
+  // Update 1: remove local queue behavior
+  $("btnSyncQueue").style.display = "none";
+  $("btnQueueOnly").style.display = "none";
+  $("kpiQueued").textContent = "—";
+
+  $("btnClear").addEventListener("click", () => {
     clearForm();
+    toast("Cleared.", "ok");
   });
 
   $("txForm").addEventListener("submit", async (e) => {
     e.preventDefault();
+
     const p = buildPayload();
     const err = validate(p);
     if (err){ toast(err, "err"); return; }
-
-    if (!SCRIPT_URL || SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxkOcpL-0yH5HeP73QiXhY7-90p6HOVKqBMH_ZcSA0OU106AeMGbUUWgSh4jZIT9pRf/exec")){
-      queueTx(p);
-      toast("SCRIPT_URL not set. Queued locally instead.", "warn");
-      $("kpiLast").textContent = "queued";
-      clearForm();
-      return;
-    }
 
     try{
       const out = await postTx(p);
@@ -478,18 +461,16 @@ window.addEventListener("DOMContentLoaded", async () => {
         clearForm();
         await loadRecent();
       }else{
-        queueTx(p);
-        toast(`Rejected (${out?.error || "unknown"}). Queued locally.`, "warn");
-        $("kpiLast").textContent = "queued";
+        throw new Error(out?.error || "Unknown error from Apps Script");
       }
     }catch(ex){
-      console.warn(ex);
-      queueTx(p);
-      toast("Network/CORS blocked. Queued locally. Sync later.", "warn");
-      $("kpiLast").textContent = "queued";
+      console.error(ex);
+      $("kpiLast").textContent = "POST FAIL";
+      toast(`Save failed: ${ex.message}`, "err");
     }
   });
 });
 </script>
+
 </body>
 </html>
